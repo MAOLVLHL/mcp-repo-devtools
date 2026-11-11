@@ -70,7 +70,7 @@ jobs:
             --json > eval-run.json
       - name: Keep the run
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eval-run-${{ inputs.arm }}
           path: eval-run.json
