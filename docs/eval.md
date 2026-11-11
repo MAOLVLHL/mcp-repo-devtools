@@ -263,7 +263,7 @@ fixture or a drifted harness fails a pull request without a model or a secret.
 
 ## What it does not measure
 
-- **General coding ability.** One narrow task, thirty fixtures. A model that aces this may
+- **General coding ability.** One narrow task, thirty-six fixtures. A model that aces this may
   still be useless at everything else.
 - **Latency.** Turns and tokens are counted; wall-clock time is not, because the fixture
   build and the provider are both local.

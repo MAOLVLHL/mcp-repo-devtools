@@ -20,7 +20,7 @@
   (and 404s everything else), the log download redirects to a host that never receives the
   token, the oracle solves a CI fixture on the typed arm, and the scripted raw arm scores
   it as a miss because no scripted trajectory of one `git` call can reach a workflow log.
-- The eval now has thirty fixtures, up from ten: twelve Python and eight JavaScript,
+- The eval now has thirty-six fixtures, up from ten: twelve Python and eight JavaScript,
   covering money rounded wrong, an off-by-one paginator, a mutable default argument, a
   cache key that lost the tenant, an in-place sort, a race on a cache miss, and twenty-two
   more. Each one ships a runnable test suite that is green at the culprit's parent and red

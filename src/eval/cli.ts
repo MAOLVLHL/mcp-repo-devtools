@@ -11,8 +11,8 @@
  * score a known-correct trajectory cannot be trusted with a model's. A miss fails the run
  * on either arm, so the raw arm is scored on the git fixtures (npm run eval:baseline): one
  * git command cannot read a CI log. If a model solves those CI cases anyway — and one did,
- * at half the tokens — that is a finding about the fixtures, and it is published rather
- * than excused. See docs/eval.md.
+ * all eighteen runs, at 8.2k tokens against the typed arm's 14.9k — that is a finding about
+ * the fixtures, and it is published rather than excused. See docs/eval.md.
  */
 
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
