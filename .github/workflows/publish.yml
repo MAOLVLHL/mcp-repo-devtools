@@ -12,6 +12,8 @@ permissions:
 jobs:
   npm:
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,7 +21,11 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
       - run: npm ci
+      - name: Explain a missing token
+        if: env.NPM_TOKEN == ''
+        run: echo "::warning::NPM_TOKEN is not set on this repository; nothing was published. Add it under Settings > Secrets and re-run this job."
       # prepublishOnly runs the build and the full test suite.
-      - run: npm publish --provenance --access public
+      - if: env.NPM_TOKEN != ''
+        run: npm publish --provenance --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
