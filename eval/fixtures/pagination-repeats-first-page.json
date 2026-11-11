@@ -1,0 +1,26 @@
+{
+  "id": "pagination-repeats-first-page",
+  "symptom": "tests/test_paging.py::test_second_page fails: page 2 returns the same rows as page 1.",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: add a paginator",
+      "files": {
+        "src/paging.py": "def page(items, number, size):\n    start = (number - 1) * size\n    return items[start:start + size]\n",
+        "tests/test_paging.py": "from src.paging import page\n\n\ndef test_second_page():\n    assert page(list(range(10)), 2, 3) == [3, 4, 5]\n"
+      }
+    },
+    {
+      "message": "fix: use the page number as the offset",
+      "files": {
+        "src/paging.py": "def page(items, number, size):\n    start = number * size\n    return items[start:start + size]\n"
+      }
+    },
+    {
+      "message": "test: cover the last partial page",
+      "files": {
+        "tests/test_paging.py": "from src.paging import page\n\n\ndef test_second_page():\n    assert page(list(range(10)), 2, 3) == [3, 4, 5]\n\n\ndef test_last_page():\n    assert page(list(range(10)), 2, 5) == [5, 6, 7, 8, 9]\n"
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "sort-order-depends-on-locale",
+  "symptom": "tests/test_names.py::test_sorted fails: uppercase names no longer sort first.",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: sort display names",
+      "files": {
+        "src/names.py": "def sorted_names(names):\n    return sorted(names)\n",
+        "tests/test_names.py": "from src.names import sorted_names\n\n\ndef test_sorted():\n    assert sorted_names([\"beta\", \"Alpha\"]) == [\"Alpha\", \"beta\"]\n"
+      }
+    },
+    {
+      "message": "refactor: use case-insensitive sorting",
+      "files": {
+        "src/names.py": "def sorted_names(names):\n    return sorted(names, key=str.lower)\n"
+      }
+    },
+    {
+      "message": "test: cover duplicates",
+      "files": {
+        "tests/test_names.py": "from src.names import sorted_names\n\n\ndef test_sorted():\n    assert sorted_names([\"beta\", \"Alpha\"]) == [\"Alpha\", \"beta\"]\n\n\ndef test_duplicates():\n    assert sorted_names([\"b\", \"b\"]) == [\"b\", \"b\"]\n"
+      }
+    }
+  ]
+}

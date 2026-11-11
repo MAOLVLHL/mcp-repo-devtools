@@ -1,0 +1,32 @@
+{
+  "id": "query-loses-the-tenant-filter",
+  "symptom": "tests/test_query.py::test_scoped fails: the query returns rows from another tenant.",
+  "expected_commit": 3,
+  "commits": [
+    {
+      "message": "feat: build scoped queries",
+      "files": {
+        "src/query.py": "def rows_for(tenant):\n    return \"SELECT id FROM rows WHERE tenant = '\" + tenant + \"'\"\n",
+        "tests/test_query.py": "from src.query import rows_for\n\n\ndef test_scoped():\n    assert \"tenant = 'a'\" in rows_for(\"a\")\n"
+      }
+    },
+    {
+      "message": "feat: order the results",
+      "files": {
+        "src/query.py": "def rows_for(tenant):\n    return \"SELECT id FROM rows WHERE tenant = '\" + tenant + \"' ORDER BY id\"\n"
+      }
+    },
+    {
+      "message": "perf: select everything and filter in Python",
+      "files": {
+        "src/query.py": "def rows_for(tenant):\n    return \"SELECT id, tenant FROM rows ORDER BY id\"\n"
+      }
+    },
+    {
+      "message": "docs: explain the query helper",
+      "files": {
+        "docs/query.md": "# Query\n\nRows are scoped to a tenant.\n"
+      }
+    }
+  ]
+}

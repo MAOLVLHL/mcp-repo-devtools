@@ -1,0 +1,32 @@
+{
+  "id": "cache-key-drops-the-tenant",
+  "symptom": "tests/test_cache.py::test_tenant_isolation fails: two tenants read each other's cached row.",
+  "expected_commit": 3,
+  "commits": [
+    {
+      "message": "feat: add a tiny cache",
+      "files": {
+        "src/cache.py": "STORE = {}\n\n\ndef key_for(tenant, resource):\n    return (tenant, resource)\n\n\ndef get(tenant, resource):\n    return STORE.get(key_for(tenant, resource))\n\n\ndef put(tenant, resource, value):\n    STORE[key_for(tenant, resource)] = value\n",
+        "tests/test_cache.py": "from src.cache import get, put\n\n\ndef test_tenant_isolation():\n    put(\"a\", \"row\", 1)\n    put(\"b\", \"row\", 2)\n    assert get(\"a\", \"row\") == 1\n"
+      }
+    },
+    {
+      "message": "feat: allow string keys",
+      "files": {
+        "src/cache.py": "STORE = {}\n\n\ndef key_for(tenant, resource):\n    return (tenant, resource)\n\n\ndef get(tenant, resource):\n    return STORE.get(key_for(tenant, resource))\n\n\ndef put(tenant, resource, value):\n    STORE[key_for(tenant, resource)] = value\n\n\ndef clear():\n    STORE.clear()\n"
+      }
+    },
+    {
+      "message": "refactor: shorten the cache key",
+      "files": {
+        "src/cache.py": "STORE = {}\n\n\ndef key_for(tenant, resource):\n    return resource\n\n\ndef get(tenant, resource):\n    return STORE.get(key_for(tenant, resource))\n\n\ndef put(tenant, resource, value):\n    STORE[key_for(tenant, resource)] = value\n\n\ndef clear():\n    STORE.clear()\n"
+      }
+    },
+    {
+      "message": "docs: describe cache eviction",
+      "files": {
+        "docs/cache.md": "# Cache\n\nEntries are keyed per tenant.\n"
+      }
+    }
+  ]
+}

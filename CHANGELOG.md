@@ -40,6 +40,24 @@
 - [`docs/agent.md`](docs/agent.md): the loop, the provider seam, the caps, how to point
   the CLI at any OpenAI-compatible endpoint, and what the agent deliberately is not.
 
+- `eval/`: a task-level eval — ten offline fixtures, each a repository baked from a few
+  commits with one regression, the symptom a user would report, and the sha that
+  introduced it. Cases run through the same loop and turn cap against two arms: the six
+  read tools, or one raw `git` tool that returns output verbatim.
+- Grading is deterministic and trajectory-based: success@1 on the cited commit, turns,
+  tool calls, duplicate calls, tokens and read-only violations, with no judge model.
+- `eval/cli.ts` (`npm run eval`, `npm run eval:baseline`): the scripted oracle run that
+  must stay 10/10, and an `--provider openai` run for real measurements against any
+  OpenAI-compatible endpoint. A case that raises is reported as `ERROR` and the suite
+  continues; the CLI exits 1 and names the cases that did not finish, so one bad response
+  cannot look like a low score.
+- [`docs/eval.md`](docs/eval.md): the ten regressions, how both arms are held equal, what
+  is and is not scored, and how to add a fixture.
+- The first real-model numbers, in [`docs/eval.md`](docs/eval.md) and the README: three
+  runs per arm, 30 cases each. The six-tool arm scored 26/30 against the raw-git
+  baseline's 30/30, at 1.9× the tokens. Published as measured — a benchmark that can only
+  report a win is not one.
+
 ### Changed
 
 - The tool surface grows only additively: names, argument schemas and defaults are
@@ -49,6 +67,11 @@
   into the checked-in fixture.
 - Each per-request timeout (15 s for API calls, 30 s for log downloads) is now combined
   with the caller's signal rather than replaced by it; neither cancels the other.
+- `eval/fixtures/float-equality-breaks-total.json`: the cited commit now actually breaks
+  the failing test, by dropping the rounding from `total`. It used to change `is_zero`,
+  which `test_total` never calls; a real model pointed that out in every run, and was
+  right. The oracle could not catch it, because the oracle cites `expected_commit` by
+  construction.
 
 ## 0.2.1 - 2026-11-11
 

@@ -1,0 +1,32 @@
+{
+  "id": "refresh-token-keyerror",
+  "symptom": "tests/test_auth.py::test_refresh fails with KeyError: 'token' after today's commits.",
+  "expected_commit": 3,
+  "commits": [
+    {
+      "message": "chore: scaffold auth module",
+      "files": {
+        "src/auth.py": "def refresh(payload):\n    token = payload.get(\"token\", \"\")\n    return {\"token\": token.strip()}\n",
+        "tests/test_auth.py": "from src.auth import refresh\n\n\ndef test_refresh():\n    assert refresh({\"token\": \" abc \"}) == {\"token\": \"abc\"}\n"
+      }
+    },
+    {
+      "message": "feat: accept nested token payloads",
+      "files": {
+        "src/auth.py": "def refresh(payload):\n    body = payload.get(\"body\", payload)\n    token = body.get(\"token\", \"\")\n    return {\"token\": token.strip()}\n"
+      }
+    },
+    {
+      "message": "refactor: read the token directly",
+      "files": {
+        "src/auth.py": "def refresh(payload):\n    body = payload.get(\"body\", payload)\n    token = body[\"token\"]\n    return {\"token\": token.strip()}\n"
+      }
+    },
+    {
+      "message": "docs: describe the auth endpoints",
+      "files": {
+        "docs/auth.md": "# Auth\n\nThe refresh endpoint expects a token.\n"
+      }
+    }
+  ]
+}
