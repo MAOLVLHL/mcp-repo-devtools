@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { assertSafeRef, gitDiff, gitLog, gitStatus, runGit } from "../src/git.js";
+import type { RequestContext } from "../src/request-context.js";
 
 const gitAvailable = (() => {
   try {
@@ -107,6 +108,18 @@ test("git_diff reports a clean tree instead of an empty string", { skip: !gitAva
   try {
     const text = await gitDiff(repo, { mode: "patch", contextLines: 3 });
     assert.match(text, /no changes against HEAD/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("a cancelled request stops git instead of waiting for it", { skip: !gitAvailable }, async () => {
+  const repo = makeRepo();
+  const controller = new AbortController();
+  controller.abort();
+  const context: RequestContext = { signal: controller.signal, progress: () => {} };
+  try {
+    await assert.rejects(() => gitStatus(repo, context), /git status cancelled by the client/);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }

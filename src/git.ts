@@ -4,6 +4,7 @@
  */
 
 import { execFile } from "node:child_process";
+import { isCancellation, NO_CONTEXT, type RequestContext } from "./request-context.js";
 import { redact } from "./text.js";
 
 const TIMEOUT_MS = 10_000;
@@ -99,7 +100,11 @@ function summarizeStderr(stderr: string, fallback: string): string {
   return clipped.length > 800 ? clipped.slice(0, 800) + "…" : clipped;
 }
 
-function execGit(cwd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+function execGit(
+  cwd: string,
+  args: string[],
+  context: RequestContext = NO_CONTEXT,
+): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     execFile(
       "git",
@@ -111,9 +116,14 @@ function execGit(cwd: string, args: string[]): Promise<{ stdout: string; stderr:
         maxBuffer: MAX_BUFFER,
         windowsHide: true,
         encoding: "utf8",
+        signal: context.signal,
       },
       (error, stdout, stderr) => {
         if (error) {
+          if (isCancellation(context, error)) {
+            reject(new GitError("git " + String(args[0]) + " cancelled by the client", null));
+            return;
+          }
           const code = typeof error.code === "number" ? error.code : null;
           reject(new GitError("git " + args[0] + " failed: " + summarizeStderr(stderr, error.message), code));
           return;
@@ -128,7 +138,11 @@ function execGit(cwd: string, args: string[]): Promise<{ stdout: string; stderr:
  * Run a whitelisted git subcommand inside `cwd` and return stdout.
  * Extra flags supplied by callers are checked against the denylist.
  */
-export async function runGit(cwd: string, args: string[]): Promise<string> {
+export async function runGit(
+  cwd: string,
+  args: string[],
+  context: RequestContext = NO_CONTEXT,
+): Promise<string> {
   const subcommand = args[0];
   if (!subcommand || !ALLOWED_SUBCOMMANDS.has(subcommand)) {
     throw new Error("refusing to run git subcommand: " + String(subcommand));
@@ -139,7 +153,7 @@ export async function runGit(cwd: string, args: string[]): Promise<string> {
       throw new Error("refusing to pass git flag: " + flag);
     }
   }
-  const { stdout } = await execGit(cwd, args);
+  const { stdout } = await execGit(cwd, args, context);
   return stdout;
 }
 
@@ -184,8 +198,8 @@ function describeStatus(code: string): string {
 }
 
 /** Parse `git status --porcelain=v2 --branch` into a compact summary. */
-export async function gitStatus(repo: string): Promise<WorkingTreeStatus> {
-  const stdout = await runGit(repo, ["status", "--porcelain=v2", "--branch", "--untracked-files=normal"]);
+export async function gitStatus(repo: string, context: RequestContext = NO_CONTEXT): Promise<WorkingTreeStatus> {
+  const stdout = await runGit(repo, ["status", "--porcelain=v2", "--branch", "--untracked-files=normal"], context);
   const result: WorkingTreeStatus = {
     branch: "(detached)",
     upstream: null,
@@ -250,7 +264,11 @@ export interface LogOptions {
 }
 
 /** Return the newest commits, one line each. */
-export async function gitLog(repo: string, options: LogOptions): Promise<LogEntry[]> {
+export async function gitLog(
+  repo: string,
+  options: LogOptions,
+  context: RequestContext = NO_CONTEXT,
+): Promise<LogEntry[]> {
   const args = [
     "log",
     "-n" + String(options.limit),
@@ -260,7 +278,7 @@ export async function gitLog(repo: string, options: LogOptions): Promise<LogEntr
   if (options.path) {
     args.push("--", assertSafePath(options.path));
   }
-  const stdout = await runGit(repo, args);
+  const stdout = await runGit(repo, args, context);
   return stdout
     .split("\n")
     .filter((line) => line.trim().length > 0)
@@ -280,7 +298,11 @@ export interface DiffOptions {
 }
 
 /** Diff the working tree against a base revision (defaults to HEAD). */
-export async function gitDiff(repo: string, options: DiffOptions): Promise<string> {
+export async function gitDiff(
+  repo: string,
+  options: DiffOptions,
+  context: RequestContext = NO_CONTEXT,
+): Promise<string> {
   const base = assertSafeRef(options.base ?? "HEAD", "base");
   const args = ["diff", "--no-color", "--no-ext-diff"];
   if (options.mode === "stat") {
@@ -292,6 +314,6 @@ export async function gitDiff(repo: string, options: DiffOptions): Promise<strin
   if (options.path) {
     args.push(assertSafePath(options.path));
   }
-  const stdout = await runGit(repo, args);
+  const stdout = await runGit(repo, args, context);
   return stdout.trim().length > 0 ? stdout : "(no changes against " + base + ")";
 }
