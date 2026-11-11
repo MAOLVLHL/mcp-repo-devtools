@@ -78,6 +78,23 @@ export function clip(text: string, options: ClipOptions = {}): string {
   return truncateUtf8(lines[0] ?? "", room) + suffix;
 }
 
+/**
+ * Keep the newest lines of a log, replacing the head with a count. CI failures
+ * are almost always at the end, and this keeps a job log inside one result.
+ */
+export function tailLines(text: string, maxLines: number): string {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
+  if (normalized.length === 0) {
+    return "";
+  }
+  const lines = normalized.split("\n");
+  if (lines.length <= maxLines) {
+    return normalized;
+  }
+  const omitted = lines.length - maxLines;
+  return "…(" + omitted + " earlier lines omitted)\n" + lines.slice(omitted).join("\n");
+}
+
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
   [/\bghp_[A-Za-z0-9]{20,}\b/g, "ghp_***redacted***"],
   [/\bgho_[A-Za-z0-9]{20,}\b/g, "gho_***redacted***"],

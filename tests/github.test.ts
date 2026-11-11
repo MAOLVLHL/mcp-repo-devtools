@@ -3,31 +3,49 @@ import test from "node:test";
 import {
   assertRepoName,
   ciFailures,
+  commentOnThread,
+  createIssue,
+  createPullRequest,
   prContext,
   resolveToken,
   searchIssues,
 } from "../src/github.js";
+import { makeZip } from "./zipfixture.js";
 
 interface StubRoute {
   match: RegExp;
   status?: number;
-  body: unknown;
+  body?: unknown;
+  binary?: Buffer;
   headers?: Record<string, string>;
+}
+
+interface StubCall {
+  url: string;
+  headers: Record<string, string>;
+  method: string;
+  body: string;
 }
 
 const originalFetch = globalThis.fetch;
 
-function stubFetch(routes: StubRoute[]): Array<{ url: string; headers: Record<string, string> }> {
-  const calls: Array<{ url: string; headers: Record<string, string> }> = [];
+function stubFetch(routes: StubRoute[]): StubCall[] {
+  const calls: StubCall[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const headers = (init?.headers ?? {}) as Record<string, string>;
-    calls.push({ url, headers });
+    calls.push({ url, headers, method: init?.method ?? "GET", body: String(init?.body ?? "") });
     const route = routes.find((candidate) => candidate.match.test(url));
     if (!route) {
       throw new Error("unexpected fetch: " + url);
     }
-    return new Response(JSON.stringify(route.body), {
+    if (route.binary) {
+      return new Response(new Uint8Array(route.binary), {
+        status: route.status ?? 200,
+        headers: route.headers,
+      });
+    }
+    return new Response(JSON.stringify(route.body ?? {}), {
       status: route.status ?? 200,
       headers: route.headers,
     });
@@ -220,4 +238,177 @@ test("prContext merges pull, files, reviews and comments", async () => {
   assert.equal(context.files.length, 2);
   assert.equal(context.reviews[0]?.state, "CHANGES_REQUESTED");
   assert.equal(context.comments[0]?.line, 12);
+});
+
+const failingCheckRuns = {
+  total_count: 1,
+  check_runs: [
+    {
+      name: "test (ubuntu)",
+      status: "completed",
+      conclusion: "failure",
+      details_url: "https://github.com/o/r/actions/runs/99/job/2",
+      head_sha: "abc123def456",
+      output: { title: "pytest failed", summary: "1 failed" },
+    },
+  ],
+};
+
+const failingJobs = {
+  jobs: [
+    {
+      id: 555,
+      name: "test (ubuntu)",
+      conclusion: "failure",
+      steps: [
+        { name: "checkout", conclusion: "success" },
+        { name: "pytest", conclusion: "failure" },
+      ],
+    },
+  ],
+};
+
+const longLog = Array.from({ length: 60 }, (_, index) => "line " + String(index)).concat([
+  "AssertionError: boom",
+]).join("\n");
+
+test("ciFailures fetches the failing job log tail when includeLogs is on", async () => {
+  const archive = makeZip([{ name: "1_checkout.txt", content: "checkout ok" }, { name: "2_pytest.txt", content: longLog }]);
+  const calls = stubFetch([
+    { match: /\/commits\/main\/check-runs/, body: failingCheckRuns },
+    { match: /\/actions\/runs\/99\/jobs/, body: failingJobs },
+    {
+      match: /\/actions\/jobs\/555\/logs$/,
+      status: 302,
+      headers: { location: "https://blob.example/logs/555" },
+    },
+    { match: /blob\.example\/logs\/555/, binary: archive },
+  ]);
+
+  const report = await ciFailures("o/r", "main", "ghp_test", { includeLogs: true, logLines: 20 });
+
+  const tail = report.failures[0]?.logTail ?? "";
+  assert.match(tail, /AssertionError: boom/);
+  assert.match(tail, /earlier lines omitted/);
+  assert.equal(report.failures[0]?.logNote, "");
+  assert.equal(calls[2]?.headers["Authorization"], "Bearer ghp_test");
+  assert.equal(calls[3]?.headers["Authorization"], undefined);
+});
+
+test("ciFailures decodes the plain-text log GitHub serves behind the redirect", async () => {
+  const plain = Buffer.from(
+    "\uFEFF2026-11-11T10:54:42.1832612Z Current runner version: '2.338.2'\r\n" +
+      "2026-11-11T10:54:43.0000000Z ##[group]Run npm test\r\n" +
+      "2026-11-11T10:55:10.6377345Z AssertionError: boom\r\n",
+    "utf8",
+  );
+  stubFetch([
+    { match: /\/commits\/main\/check-runs/, body: failingCheckRuns },
+    { match: /\/actions\/runs\/99\/jobs/, body: failingJobs },
+    { match: /\/actions\/jobs\/555\/logs$/, status: 302, headers: { location: "https://blob.example/logs/555" } },
+    { match: /blob\.example\/logs\/555/, binary: plain },
+  ]);
+
+  const report = await ciFailures("o/r", "main", "ghp_test", { includeLogs: true });
+  const tail = report.failures[0]?.logTail ?? "";
+  assert.match(tail, /^Current runner version: '2\.338\.2'$/m);
+  assert.match(tail, /^AssertionError: boom$/m);
+  assert.equal(tail.includes("\uFEFF"), false);
+  assert.equal(/^\d{4}-\d{2}-\d{2}T/m.test(tail), false);
+});
+
+test("ciFailures leaves the log alone unless asked", async () => {
+  const calls = stubFetch([
+    { match: /\/commits\/main\/check-runs/, body: failingCheckRuns },
+    { match: /\/actions\/runs\/99\/jobs/, body: failingJobs },
+  ]);
+
+  const report = await ciFailures("o/r", "main", null);
+  assert.equal(report.failures[0]?.logTail, "");
+  assert.equal(report.failures[0]?.logNote, "");
+  assert.equal(
+    calls.filter((call) => call.url.includes("/logs")).length,
+    0,
+  );
+});
+
+test("ciFailures explains why a log tail is missing", async () => {
+  stubFetch([
+    { match: /\/commits\/main\/check-runs/, body: failingCheckRuns },
+    { match: /\/actions\/runs\/99\/jobs/, body: failingJobs },
+    { match: /\/actions\/jobs\/555\/logs$/, status: 404, body: { message: "Not Found" } },
+  ]);
+
+  const report = await ciFailures("o/r", "main", "ghp_test", { includeLogs: true });
+  assert.match(report.failures[0]?.logNote ?? "", /404/);
+});
+
+test("createPullRequest posts the expected payload", async () => {
+  const calls = stubFetch([
+    {
+      match: /\/repos\/o\/r\/pulls$/,
+      body: { number: 42, html_url: "https://github.com/o/r/pull/42", title: "feat: x", draft: true },
+    },
+  ]);
+
+  const pr = await createPullRequest(
+    { repo: "o/r", title: "feat: x", head: "feat/x", base: "main", body: "body text", draft: true },
+    "ghp_test",
+  );
+
+  assert.deepEqual(pr, { number: 42, url: "https://github.com/o/r/pull/42", title: "feat: x", draft: true });
+  assert.equal(calls[0]?.method, "POST");
+  assert.equal(calls[0]?.headers["Authorization"], "Bearer ghp_test");
+  const payload = JSON.parse(calls[0]?.body ?? "{}") as Record<string, unknown>;
+  assert.equal(payload["head"], "feat/x");
+  assert.equal(payload["base"], "main");
+  assert.equal(payload["draft"], true);
+});
+
+test("write calls refuse to run without a token", async () => {
+  await assert.rejects(
+    () => createPullRequest({ repo: "o/r", title: "x", head: "a", base: "b" }, null),
+    /needs GITHUB_TOKEN/,
+  );
+  await assert.rejects(() => createIssue({ repo: "o/r", title: "x" }, null), /needs GITHUB_TOKEN/);
+  await assert.rejects(() => commentOnThread({ repo: "o/r", number: 1, body: "x" }, null), /needs GITHUB_TOKEN/);
+});
+
+test("createIssue only sends labels that were provided", async () => {
+  const withLabels = stubFetch([
+    { match: /\/repos\/o\/r\/issues$/, body: { number: 3, html_url: "u", title: "t" } },
+  ]);
+  await createIssue({ repo: "o/r", title: "t", labels: ["bug", " "] }, "ghp_test");
+  const first = JSON.parse(withLabels[0]?.body ?? "{}") as Record<string, unknown>;
+  assert.deepEqual(first["labels"], ["bug"]);
+
+  const withoutLabels = stubFetch([
+    { match: /\/repos\/o\/r\/issues$/, body: { number: 3, html_url: "u", title: "t" } },
+  ]);
+  await createIssue({ repo: "o/r", title: "t" }, "ghp_test");
+  const second = JSON.parse(withoutLabels[0]?.body ?? "{}") as Record<string, unknown>;
+  assert.equal("labels" in second, false);
+});
+
+test("commentOnThread posts to the issue comments endpoint", async () => {
+  const calls = stubFetch([
+    { match: /\/repos\/o\/r\/issues\/7\/comments$/, body: { id: 9, html_url: "https://github.com/o/r/issues/7#c9" } },
+  ]);
+  const comment = await commentOnThread({ repo: "o/r", number: 7, body: "thanks" }, "ghp_test");
+  assert.equal(comment.id, 9);
+  assert.equal(calls[0]?.method, "POST");
+});
+
+test("a rejected write surfaces GitHub's reason", async () => {
+  stubFetch([
+    {
+      match: /\/repos\/o\/r\/pulls$/,
+      status: 422,
+      body: { message: "Validation Failed", errors: [{ message: "No commits between main and feat/x" }] },
+    },
+  ]);
+  await assert.rejects(
+    () => createPullRequest({ repo: "o/r", title: "x", head: "feat/x", base: "main" }, "ghp_test"),
+    /422.*No commits between/,
+  );
 });

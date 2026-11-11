@@ -1,6 +1,8 @@
 /**
- * Tool registration. Every tool is read-only and returns text shaped for a
- * model: a short header, then at most 200 lines / 64 KB.
+ * Tool registration. Read-only tools are always on; write tools appear only
+ * when MCP_ENABLE_WRITE=1, so the default surface cannot mutate a repository.
+ * Every result is text shaped for a model: a short header, then at most
+ * 200 lines / 64 KB.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -8,15 +10,36 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { assertAllowedRepo, parseAllowedRoots } from "./config.js";
 import { gitDiff, gitLog, gitStatus } from "./git.js";
-import { ciFailures, prContext, resolveToken, searchIssues } from "./github.js";
+import {
+  ciFailures,
+  commentOnThread,
+  createIssue,
+  createPullRequest,
+  prContext,
+  resolveToken,
+  searchIssues,
+} from "./github.js";
 import { clip, redact } from "./text.js";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 export const SERVER_NAME = "mcp-repo-devtools";
 
 export interface ServerOptions {
   allowedRoots?: string[];
   token?: string | null;
+  /** Register the write tools. Defaults to MCP_ENABLE_WRITE=1 in the environment. */
+  enableWrite?: boolean;
+}
+
+const TRUTHY: ReadonlySet<string> = new Set(["1", "true", "yes", "on"]);
+
+/** Write mode is opt-in: anything other than a truthy value keeps the server read-only. */
+export function parseEnableWrite(value: string | undefined): boolean {
+  return TRUTHY.has((value ?? "").trim().toLowerCase());
+}
+
+function auditWrite(tool: string, target: string): void {
+  process.stderr.write("[mcp-repo-devtools] write " + tool + " " + target + "\n");
 }
 
 function ok(text: string): CallToolResult {
@@ -94,6 +117,15 @@ function formatCi(report: Awaited<ReturnType<typeof ciFailures>>, repo: string):
     for (const step of failure.failedSteps) {
       lines.push("  failed step: " + step);
     }
+    if (failure.logNote) {
+      lines.push("  log unavailable: " + failure.logNote);
+    }
+    if (failure.logTail) {
+      lines.push("  log tail:");
+      for (const line of failure.logTail.split("\n")) {
+        lines.push("    " + line);
+      }
+    }
   }
   if (report.failures.length === 0) {
     lines.push("no failing checks on this ref");
@@ -137,6 +169,7 @@ function formatPr(context: Awaited<ReturnType<typeof prContext>>, repo: string):
 export function createServer(options: ServerOptions = {}): McpServer {
   const roots = options.allowedRoots ?? parseAllowedRoots(process.env["MCP_ALLOWED_ROOTS"]);
   const token = options.token === undefined ? resolveToken() : options.token;
+  const writeEnabled = options.enableWrite ?? parseEnableWrite(process.env["MCP_ENABLE_WRITE"]);
 
   const server = new McpServer({ name: SERVER_NAME, version: VERSION });
 
@@ -228,14 +261,31 @@ export function createServer(options: ServerOptions = {}): McpServer {
       title: "GitHub CI failures",
       description:
         "List failing check runs for a commit or branch/PR head, with the failed step names when GitHub exposes them. " +
-        "Read-only. Use this instead of reading a whole CI log: it returns only the failures.",
+        "Read-only. Set include_logs=true to also get the tail of the failing job's log, which is usually where the " +
+        "error is; that costs one extra request per job (up to three jobs).",
       inputSchema: {
         repo: z.string().describe("Repository as owner/name"),
         ref: z.string().describe("Commit sha, branch name, tag or PR head ref"),
+        include_logs: z
+          .boolean()
+          .default(false)
+          .describe("Fetch the log tail of up to three failing jobs (needs GITHUB_TOKEN)"),
+        log_lines: z
+          .number()
+          .int()
+          .min(10)
+          .max(200)
+          .default(40)
+          .describe("Lines of log tail kept per job"),
       },
     },
-    async ({ repo, ref }) =>
-      guarded(async () => formatCi(await ciFailures(repo, ref, token), repo)),
+    async ({ repo, ref, include_logs, log_lines }) =>
+      guarded(async () =>
+        formatCi(
+          await ciFailures(repo, ref, token, { includeLogs: include_logs, logLines: log_lines }),
+          repo,
+        ),
+      ),
   );
 
   server.registerTool(
@@ -253,6 +303,79 @@ export function createServer(options: ServerOptions = {}): McpServer {
     async ({ repo, number }) =>
       guarded(async () => formatPr(await prContext(repo, number, token), repo)),
   );
+
+  if (writeEnabled) {
+    server.registerTool(
+      "gh_pr_create",
+      {
+        title: "open a pull request",
+        description:
+          "Open a pull request from an already-pushed branch. WRITE: mutates GitHub, so it is only registered when " +
+          "MCP_ENABLE_WRITE=1. Requires GITHUB_TOKEN with repo scope. Returns the PR number and url.",
+        inputSchema: {
+          repo: z.string().describe("Repository as owner/name"),
+          title: z.string().describe("Pull request title"),
+          head: z.string().describe("Source branch, already pushed to the remote"),
+          base: z.string().describe("Target branch, e.g. main or develop"),
+          body: z.string().default("").describe("Pull request description (markdown)"),
+          draft: z.boolean().default(false).describe("Open as a draft"),
+        },
+      },
+      async ({ repo, title, head, base, body, draft }) =>
+        guarded(async () => {
+          auditWrite("gh_pr_create", repo + " " + head + " -> " + base);
+          const pr = await createPullRequest({ repo, title, head, base, body, draft }, token);
+          return [
+            "opened PR #" + pr.number + (pr.draft ? " (draft)" : ""),
+            pr.title,
+            pr.url,
+          ].join("\n");
+        }),
+    );
+
+    server.registerTool(
+      "gh_issue_create",
+      {
+        title: "file an issue",
+        description:
+          "File an issue. WRITE: mutates GitHub, so it is only registered when MCP_ENABLE_WRITE=1. " +
+          "Requires GITHUB_TOKEN with repo scope. Returns the issue number and url.",
+        inputSchema: {
+          repo: z.string().describe("Repository as owner/name"),
+          title: z.string().describe("Issue title"),
+          body: z.string().default("").describe("Issue body (markdown)"),
+          labels: z.array(z.string()).default([]).describe("Labels to attach; unknown labels are reported by GitHub"),
+        },
+      },
+      async ({ repo, title, body, labels }) =>
+        guarded(async () => {
+          auditWrite("gh_issue_create", repo);
+          const issue = await createIssue({ repo, title, body, labels }, token);
+          return ["filed issue #" + issue.number, issue.title, issue.url].join("\n");
+        }),
+    );
+
+    server.registerTool(
+      "gh_pr_comment",
+      {
+        title: "comment on a pull request or issue",
+        description:
+          "Post a comment on an issue or pull request. WRITE: mutates GitHub, so it is only registered when " +
+          "MCP_ENABLE_WRITE=1. Requires GITHUB_TOKEN with repo scope.",
+        inputSchema: {
+          repo: z.string().describe("Repository as owner/name"),
+          number: z.number().int().positive().describe("Issue or pull request number"),
+          body: z.string().describe("Comment body (markdown)"),
+        },
+      },
+      async ({ repo, number, body }) =>
+        guarded(async () => {
+          auditWrite("gh_pr_comment", repo + "#" + String(number));
+          const comment = await commentOnThread({ repo, number, body }, token);
+          return "commented on " + repo + "#" + String(number) + "\n" + comment.url;
+        }),
+    );
+  }
 
   return server;
 }

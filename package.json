@@ -1,15 +1,19 @@
 {
   "name": "mcp-repo-devtools",
-  "version": "0.1.0",
-  "description": "Read-only MCP server for git history, GitHub issues and CI failures.",
+  "version": "0.2.0",
+  "description": "MCP server for git history, GitHub issues, CI failures and pull requests.",
   "type": "module",
   "bin": {
     "mcp-repo-devtools": "dist/index.js"
   },
   "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "engines": {
@@ -18,8 +22,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
-    "test": "npm run build && node --import tsx --test tests/text.test.ts tests/config.test.ts tests/git.test.ts tests/github.test.ts tests/server.test.ts",
-    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
+    "test": "npm run build && node --import tsx --test tests/text.test.ts tests/config.test.ts tests/zip.test.ts tests/git.test.ts tests/github.test.ts tests/server.test.ts",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "mcp",
@@ -27,9 +32,23 @@
     "git",
     "github",
     "ci",
-    "developer-tools"
+    "developer-tools",
+    "claude-code",
+    "codex",
+    "cursor"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MAOLVLHL/mcp-repo-devtools.git"
+  },
+  "homepage": "https://github.com/MAOLVLHL/mcp-repo-devtools#readme",
+  "bugs": {
+    "url": "https://github.com/MAOLVLHL/mcp-repo-devtools/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
     "zod": "^3.24.1"

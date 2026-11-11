@@ -4,10 +4,13 @@
  */
 
 import { assertSafeRef } from "./git.js";
-import { redact } from "./text.js";
+import { redact, tailLines } from "./text.js";
+import { decodeLogArchive } from "./zip.js";
 
 const API_BASE = "https://api.github.com";
 const TIMEOUT_MS = 15_000;
+const LOG_TIMEOUT_MS = 30_000;
+const MAX_LOG_BYTES = 16 * 1024 * 1024;
 const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 export class GitHubError extends Error {
@@ -171,6 +174,10 @@ export interface CiFailure {
   summary: string;
   detailsUrl: string;
   failedSteps: string[];
+  /** Tail of the failing job's log, empty unless includeLogs was requested. */
+  logTail: string;
+  /** Why a requested log tail is missing, e.g. the archive expired. */
+  logNote: string;
 }
 
 export interface CiFailureReport {
@@ -192,8 +199,15 @@ interface RawCheckRuns {
   }>;
 }
 
+interface RawJob {
+  id: number;
+  name: string;
+  conclusion: string | null;
+  steps?: Array<{ name: string; conclusion: string | null }>;
+}
+
 interface RawJobs {
-  jobs: Array<{ name: string; conclusion: string | null; steps?: Array<{ name: string; conclusion: string | null }> }>;
+  jobs: RawJob[];
 }
 
 const FAILING_CONCLUSIONS: ReadonlySet<string> = new Set([
@@ -205,12 +219,102 @@ const FAILING_CONCLUSIONS: ReadonlySet<string> = new Set([
 
 const MAX_FAILING_RUNS = 10;
 const MAX_JOB_LOOKUPS = 5;
+const MAX_LOG_JOBS = 3;
+const DEFAULT_LOG_LINES = 40;
 
-/** List failing checks for a ref, with the failed step names when available. */
+export interface CiFailureOptions {
+  /** Fetch the log tail of up to three failing jobs. One extra request per job. */
+  includeLogs?: boolean;
+  /** Lines of log tail kept per job (10..200). */
+  logLines?: number;
+}
+
+function clampInt(value: number | undefined, fallback: number, min: number, max: number): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
+/**
+ * Download a binary GitHub endpoint. The logs API answers with a redirect to a
+ * signed blob URL, and that URL must not receive our token — so the redirect is
+ * followed by hand rather than by fetch.
+ */
+async function ghDownload(pathname: string, token: string | null): Promise<Buffer> {
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": "mcp-repo-devtools/0.2.0",
+  };
+  if (token) {
+    headers["Authorization"] = "Bearer " + token;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(API_BASE + pathname, {
+      headers,
+      redirect: "manual",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) {
+        throw new GitHubError("GitHub redirected " + pathname + " without a location header", null);
+      }
+      response = await fetch(location, { signal: AbortSignal.timeout(LOG_TIMEOUT_MS) });
+    }
+  } catch (error) {
+    if (error instanceof GitHubError) {
+      throw error;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    throw new GitHubError("could not download " + pathname + ": " + message, null);
+  }
+
+  if (!response.ok) {
+    throw new GitHubError(
+      "GitHub returned " + response.status + " for " + pathname + ". Logs expire after 90 days and need GITHUB_TOKEN.",
+      response.status,
+    );
+  }
+
+  const length = Number(response.headers.get("content-length") ?? "0");
+  if (length > MAX_LOG_BYTES) {
+    throw new GitHubError("log archive is " + length + " bytes, over the 16 MB limit", null);
+  }
+  return Buffer.from(await response.arrayBuffer());
+}
+
+/** Drop the ISO timestamp GitHub prefixes to every runner line, so the tail reads like output. */
+function stripLogPrefixes(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => line.replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z /, ""))
+    .join("\n");
+}
+
+async function jobLogTail(
+  repo: string,
+  jobId: number,
+  lines: number,
+  token: string | null,
+): Promise<string> {
+  const archive = await ghDownload("/repos/" + repo + "/actions/jobs/" + String(jobId) + "/logs", token);
+  const text = decodeLogArchive(archive);
+  if (text.length === 0) {
+    return "";
+  }
+  return tailLines(redact(stripLogPrefixes(text)), lines);
+}
+
+/** List failing checks for a ref, with failed step names and optionally a log tail. */
 export async function ciFailures(
   repoInput: string,
   refInput: string,
   token: string | null,
+  options: CiFailureOptions = {},
 ): Promise<CiFailureReport> {
   const repo = assertRepoName(repoInput);
   const ref = assertSafeRef(refInput, "ref");
@@ -224,10 +328,14 @@ export async function ciFailures(
   );
   const sha = data.check_runs[0]?.head_sha ?? null;
   const failures: CiFailure[] = [];
+  const logLines = clampInt(options.logLines, DEFAULT_LOG_LINES, 10, 200);
   let lookups = 0;
+  let logBudget = options.includeLogs === true ? MAX_LOG_JOBS : 0;
 
   for (const run of failing.slice(0, MAX_FAILING_RUNS)) {
     const failedSteps: string[] = [];
+    let logTail = "";
+    let logNote = "";
     const detailsUrl = run.details_url ?? "";
     const runMatch = /\/actions\/runs\/(\d+)/.exec(detailsUrl);
     if (runMatch && lookups < MAX_JOB_LOOKUPS) {
@@ -237,11 +345,24 @@ export async function ciFailures(
           "/repos/" + repo + "/actions/runs/" + String(runMatch[1]) + "/jobs?per_page=100&filter=latest",
           token,
         );
+        let failingJobId: number | null = null;
         for (const job of jobs.jobs) {
           for (const step of job.steps ?? []) {
             if (step.conclusion === "failure" || step.conclusion === "timed_out") {
               failedSteps.push(job.name + " / " + step.name);
+              failingJobId ??= job.id;
             }
+          }
+        }
+        if (logBudget > 0 && failingJobId !== null) {
+          logBudget -= 1;
+          try {
+            logTail = await jobLogTail(repo, failingJobId, logLines, token);
+            if (logTail.length === 0) {
+              logNote = "no log archive returned for this job";
+            }
+          } catch (error) {
+            logNote = error instanceof Error ? error.message : String(error);
           }
         }
       } catch {
@@ -255,6 +376,8 @@ export async function ciFailures(
       summary: excerpt(run.output?.summary, 400),
       detailsUrl,
       failedSteps: failedSteps.slice(0, 10),
+      logTail,
+      logNote,
     });
   }
 
@@ -368,4 +491,174 @@ export async function prContext(
       bodyExcerpt: excerpt(comment.body, 300),
     })),
   };
+}
+
+/** Write calls are gated by the server, so this is the only place a token is required. */
+function requireToken(token: string | null, action: string): string {
+  if (!token) {
+    throw new GitHubError(action + " needs GITHUB_TOKEN with repo scope; reads work without one, writes do not.", 401);
+  }
+  return token;
+}
+
+function requireText(value: string, field: string, limit: number): string {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw new Error(field + " must not be empty");
+  }
+  if (trimmed.length > limit) {
+    throw new Error(field + " is " + trimmed.length + " characters, over the " + limit + " limit");
+  }
+  return trimmed;
+}
+
+async function ghSend<T>(
+  pathname: string,
+  token: string | null,
+  body: unknown,
+): Promise<T> {
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": "mcp-repo-devtools/0.2.0",
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers["Authorization"] = "Bearer " + token;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(API_BASE + pathname, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new GitHubError("could not reach api.github.com: " + message, null);
+  }
+
+  if (!response.ok) {
+    const detail = redact((await response.text()).slice(0, 600));
+    if (response.status === 401) {
+      throw new GitHubError("GitHub rejected the token (401). Check GITHUB_TOKEN.", 401);
+    }
+    if (response.status === 403) {
+      throw new GitHubError(
+        "GitHub refused the write (403). The token needs repo scope, and the branch must exist on the remote. " + detail,
+        403,
+      );
+    }
+    if (response.status === 422) {
+      throw new GitHubError("GitHub rejected the request (422): " + detail, 422);
+    }
+    throw new GitHubError("GitHub returned " + response.status + " for " + pathname + ": " + detail, response.status);
+  }
+
+  return (await response.json()) as T;
+}
+
+export interface CreatePullRequestInput {
+  repo: string;
+  title: string;
+  head: string;
+  base: string;
+  body?: string;
+  draft?: boolean;
+}
+
+export interface CreatedPullRequest {
+  number: number;
+  url: string;
+  title: string;
+  draft: boolean;
+}
+
+/** Open a pull request. Requires a token; the head branch must already be pushed. */
+export async function createPullRequest(
+  input: CreatePullRequestInput,
+  token: string | null,
+): Promise<CreatedPullRequest> {
+  const repo = assertRepoName(input.repo);
+  const auth = requireToken(token, "opening a pull request");
+  const title = requireText(input.title, "title", 300);
+  const head = assertSafeRef(input.head, "head");
+  const base = assertSafeRef(input.base, "base");
+  const body = input.body ?? "";
+
+  const created = await ghSend<{ number: number; html_url: string; title: string; draft: boolean }>(
+    "/repos/" + repo + "/pulls",
+    auth,
+    { title, head, base, body, draft: input.draft === true },
+  );
+  return {
+    number: created.number,
+    url: created.html_url,
+    title: created.title,
+    draft: created.draft,
+  };
+}
+
+export interface CreateIssueInput {
+  repo: string;
+  title: string;
+  body?: string;
+  labels?: string[];
+}
+
+export interface CreatedIssue {
+  number: number;
+  url: string;
+  title: string;
+}
+
+/** File an issue. Requires a token with repo scope. */
+export async function createIssue(
+  input: CreateIssueInput,
+  token: string | null,
+): Promise<CreatedIssue> {
+  const repo = assertRepoName(input.repo);
+  const auth = requireToken(token, "filing an issue");
+  const title = requireText(input.title, "title", 300);
+  const labels = (input.labels ?? []).map((label) => label.trim()).filter((label) => label.length > 0);
+
+  const created = await ghSend<{ number: number; html_url: string; title: string }>(
+    "/repos/" + repo + "/issues",
+    auth,
+    { title, body: input.body ?? "", ...(labels.length > 0 ? { labels } : {}) },
+  );
+  return { number: created.number, url: created.html_url, title: created.title };
+}
+
+export interface CommentInput {
+  repo: string;
+  number: number;
+  body: string;
+}
+
+export interface CreatedComment {
+  id: number;
+  url: string;
+}
+
+/** Comment on an issue or pull request. Requires a token with repo scope. */
+export async function commentOnThread(
+  input: CommentInput,
+  token: string | null,
+): Promise<CreatedComment> {
+  const repo = assertRepoName(input.repo);
+  const auth = requireToken(token, "commenting");
+  if (!Number.isInteger(input.number) || input.number <= 0) {
+    throw new Error("number must be a positive integer");
+  }
+  const body = requireText(input.body, "body", 60_000);
+
+  const created = await ghSend<{ id: number; html_url: string }>(
+    "/repos/" + repo + "/issues/" + String(input.number) + "/comments",
+    auth,
+    { body },
+  );
+  return { id: created.id, url: created.html_url };
 }

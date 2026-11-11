@@ -6,7 +6,7 @@
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { parseAllowedRoots } from "./config.js";
-import { createServer, SERVER_NAME, VERSION } from "./server.js";
+import { createServer, parseEnableWrite, SERVER_NAME, VERSION } from "./server.js";
 
 const argv = process.argv.slice(2);
 
@@ -20,7 +20,8 @@ if (argv.includes("--help") || argv.includes("-h")) {
     [
       SERVER_NAME + " " + VERSION,
       "",
-      "Read-only MCP server for git history, GitHub issues and CI failures.",
+      "MCP server for git history, GitHub issues, CI failures and pull requests.",
+      "Read-only unless MCP_ENABLE_WRITE=1.",
       "",
       "Usage: mcp-repo-devtools            start the stdio server",
       "       mcp-repo-devtools --version",
@@ -28,6 +29,7 @@ if (argv.includes("--help") || argv.includes("-h")) {
       "Environment:",
       "  MCP_ALLOWED_ROOTS  required; directories this server may read (path-separated)",
       "  GITHUB_TOKEN       optional; raises the GitHub API limit from 60 to 5000/hour",
+      "  MCP_ENABLE_WRITE   optional; set to 1 to also register the write tools",
       "",
     ].join("\n"),
   );
@@ -41,6 +43,9 @@ if (roots.length === 0) {
   );
 }
 
-const server = createServer({ allowedRoots: roots });
+const writeEnabled = parseEnableWrite(process.env["MCP_ENABLE_WRITE"]);
+const server = createServer({ allowedRoots: roots, enableWrite: writeEnabled });
 await server.connect(new StdioServerTransport());
-process.stderr.write("[" + SERVER_NAME + "] ready (roots: " + (roots.join(", ") || "none") + ")\n");
+process.stderr.write(
+  "[" + SERVER_NAME + "] ready (roots: " + (roots.join(", ") || "none") + ", write: " + (writeEnabled ? "on" : "off") + ")\n",
+);
