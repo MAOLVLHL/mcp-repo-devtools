@@ -14,6 +14,14 @@
 - `git_diff` reports `truncated: true` in its structured copy when the patch was cut.
 - `tests/structured-output.test.ts`: field-level assertions for all six read tools,
   including an over-budget patch and a credential inside a commit subject.
+- `gh_ci_failures` reports one `notifications/progress` event per GitHub hop when the
+  client sends a `progressToken`, so a ten-second call can show which step it is on.
+  The first event carries no `total`; the last one equals it.
+- Every request now carries the caller's abort signal into `fetch` and `execFile`,
+  so cancelling a tool call stops the in-flight work instead of leaving it to time out.
+- `tests/request-context.test.ts` and `tests/progress.test.ts`: the context factory,
+  the notification sequence, the no-token path and cancellation, over an in-memory
+  transport with a stubbed network.
 
 ### Changed
 
@@ -22,6 +30,8 @@
 - `docs/tools.md` and `docs/architecture.md` now describe the three layers a result
   can carry, and `scripts/contract-snapshot.mjs` locks annotations and output schemas
   into the checked-in fixture.
+- Each per-request timeout (15 s for API calls, 30 s for log downloads) is now combined
+  with the caller's signal rather than replaced by it; neither cancels the other.
 
 ## 0.2.1 - 2026-11-11
 
