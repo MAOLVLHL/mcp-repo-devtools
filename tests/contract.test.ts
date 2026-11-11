@@ -10,45 +10,47 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 import { createServer } from "../src/server.js";
 
+/** Fields a host can read out of a tool annotation. Hints, not permissions. */
 const ANNOTATION_FIELDS = ["destructiveHint", "idempotentHint", "openWorldHint", "readOnlyHint"] as const;
 
-/** Connect once and keep both halves of the handshake: the tool list and the instructions. */
-async function handshake(enableWrite: boolean) {
+async function withClient<T>(enableWrite: boolean, run: (client: Client) => Promise<T>): Promise<T> {
   const root = await mkdtemp(join(tmpdir(), "repo-devtools-contract-"));
   const server = createServer({ allowedRoots: [root], token: null, enableWrite });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   const client = new Client({ name: "contract", version: "0.0.0" }, { capabilities: {} });
   await client.connect(clientTransport);
-  const { tools } = await client.listTools();
-  const instructions = client.getInstructions();
-  await client.close();
-  return { tools, instructions };
+  try {
+    return await run(client);
+  } finally {
+    await client.close();
+  }
 }
 
 /** The shape a host sees, independent of descriptions and ordering. */
 async function surface(enableWrite: boolean) {
-  const { tools } = await handshake(enableWrite);
-  const shape = tools
-    .map((tool) => {
-      const schema = (tool.inputSchema ?? {}) as {
-        properties?: Record<string, unknown>;
-        required?: string[];
-      };
-      const annotations = (tool.annotations ?? {}) as Record<string, boolean | undefined>;
-      return {
-        name: tool.name,
-        properties: Object.keys(schema.properties ?? {}).sort(),
-        required: [...(schema.required ?? [])].sort(),
-        // A hint that disappears changes behaviour for the host, so a missing
-        // one is recorded as null rather than omitted.
-        annotations: Object.fromEntries(
-          ANNOTATION_FIELDS.map((field) => [field, annotations[field] ?? null]),
-        ),
-      };
-    })
-    .sort((left, right) => left.name.localeCompare(right.name));
-  return shape;
+  return withClient(enableWrite, async (client) => {
+    const { tools } = await client.listTools();
+    return tools
+      .map((tool) => {
+        const schema = (tool.inputSchema ?? {}) as {
+          properties?: Record<string, unknown>;
+          required?: string[];
+        };
+        const output = (tool.outputSchema ?? {}) as { properties?: Record<string, unknown> };
+        const annotations = (tool.annotations ?? {}) as Record<string, boolean | undefined>;
+        return {
+          name: tool.name,
+          properties: Object.keys(schema.properties ?? {}).sort(),
+          required: [...(schema.required ?? [])].sort(),
+          annotations: Object.fromEntries(
+            ANNOTATION_FIELDS.map((field) => [field, annotations[field] ?? null]),
+          ),
+          output: Object.keys(output.properties ?? {}).sort(),
+        };
+      })
+      .sort((left, right) => left.name.localeCompare(right.name));
+  });
 }
 
 test("the default tool surface does not change by accident", async () => {
@@ -69,40 +71,34 @@ test("write tools appear only when write mode is on", async () => {
   assert.equal(writable.length, readOnly.length + 3);
 });
 
-test("every tool says what it does to the world", async () => {
-  const tools = await surface(true);
-  const byName = new Map(tools.map((tool) => [tool.name, tool.annotations]));
+test("every tool says whether it reads or writes, and whether it is safe to repeat", async () => {
+  const localTools = ["git_status", "git_log", "git_diff"];
+  const writeTools = ["gh_pr_create", "gh_issue_create", "gh_pr_comment"];
+  const readOnlyTools = [
+    "git_status",
+    "git_log",
+    "git_diff",
+    "gh_issue_search",
+    "gh_ci_failures",
+    "gh_pr_context",
+  ];
 
-  for (const name of ["git_status", "git_log", "git_diff"]) {
-    assert.deepEqual(byName.get(name), {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-    });
+  const seen = new Set<string>();
+  for (const tool of [...(await surface(false)), ...(await surface(true))]) {
+    seen.add(tool.name);
+    const destructive = writeTools.includes(tool.name);
+    const openWorld = !localTools.includes(tool.name);
+    assert.equal(tool.annotations["readOnlyHint"], !destructive, tool.name + " readOnlyHint");
+    assert.equal(tool.annotations["destructiveHint"], destructive, tool.name + " destructiveHint");
+    assert.equal(tool.annotations["idempotentHint"], !destructive, tool.name + " idempotentHint");
+    assert.equal(tool.annotations["openWorldHint"], openWorld, tool.name + " openWorldHint");
   }
-  for (const name of ["gh_issue_search", "gh_ci_failures", "gh_pr_context"]) {
-    assert.deepEqual(byName.get(name), {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-    });
-  }
-  for (const name of ["gh_pr_create", "gh_issue_create", "gh_pr_comment"]) {
-    assert.deepEqual(byName.get(name), {
-      readOnlyHint: false,
-      destructiveHint: true,
-      idempotentHint: false,
-      openWorldHint: true,
-    });
-  }
+  assert.deepEqual([...seen].sort(), [...readOnlyTools, ...writeTools].sort());
 });
 
-test("the server explains itself once, at connect time", async () => {
-  const { instructions } = await handshake(false);
-  assert.equal(typeof instructions, "string");
-  // The two facts a host cannot infer from a tool list.
-  assert.match(instructions ?? "", /git_status/);
-  assert.match(instructions ?? "", /MCP_ENABLE_WRITE=1/);
+test("the server explains how to start and what write mode means", async () => {
+  const instructions = await withClient(false, async (client) => client.getInstructions());
+  assert.ok(instructions && instructions.length > 100, "instructions are sent at initialize");
+  assert.match(instructions, /git_status/);
+  assert.match(instructions, /MCP_ENABLE_WRITE=1/);
 });

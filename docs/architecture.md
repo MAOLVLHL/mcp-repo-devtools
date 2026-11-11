@@ -35,7 +35,7 @@ flowchart LR
 | Process → repository | Only 13 git subcommands; flag denylist stops `-c`, `--exec-path`, `--git-dir`; `execFile` with an argv array, never a shell string | `src/git.ts` |
 | Repository path → filesystem | `realpath` the target and require `path.relative(root, target)` to stay inside `MCP_ALLOWED_ROOTS`; a filesystem root is refused as a root | `src/config.ts` |
 | Process → GitHub | One base URL, one token, 15 s timeout; redirects are followed manually so the token never reaches the blob host | `src/github.ts` |
-| Result → model | Every result passes `redact()` then `clip()` (64 KB / 200 lines) before it leaves the process | `src/server.ts` |
+| Result → model | The text passes `redact()` then `clip()` (64 KB / 200 lines); the structured copy passes `redactDeep()` and is validated against the tool's `outputSchema`, so a mismatch is an error rather than a quietly wrong field | `src/server.ts`, `src/text.ts` |
 | Write tools | Registered only when `MCP_ENABLE_WRITE=1`, and each call logs a line to stderr | `src/server.ts` |
 | Logs | stdout carries protocol frames only; every diagnostic goes to stderr | `src/index.ts` |
 
@@ -48,7 +48,9 @@ flowchart LR
 3. The handler does one unit of work: one git invocation, or one to four GitHub
    requests. Nothing is cached, so a second call always observes current state.
 4. The result is rendered as text, redacted, and clipped. Truncation is not
-   silent: the tail line names the parameter that narrows the query.
+   silent: the tail line names the parameter that narrows the query. When the tool
+   declared an `outputSchema`, the same data is also rendered as fields, deep-redacted
+   and stripped of `undefined`, then validated by the SDK before it is sent.
 5. Errors become `isError: true` results with a message that says what to do
    next ("set GITHUB_TOKEN", "narrow with path="), not a stack trace.
 

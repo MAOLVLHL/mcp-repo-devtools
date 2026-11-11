@@ -27,7 +27,8 @@ const ANNOTATION_FIELDS = ["destructiveHint", "idempotentHint", "openWorldHint",
 
 const shape = tools
   .map((tool) => {
-    const schema = (tool.inputSchema ?? {});
+    const schema = tool.inputSchema ?? {};
+    const output = tool.outputSchema ?? {};
     const annotations = tool.annotations ?? {};
     return {
       name: tool.name,
@@ -36,6 +37,7 @@ const shape = tools
       annotations: Object.fromEntries(
         ANNOTATION_FIELDS.map((field) => [field, annotations[field] ?? null]),
       ),
+      output: Object.keys(output.properties ?? {}).sort(),
     };
   })
   .sort((left, right) => left.name.localeCompare(right.name));

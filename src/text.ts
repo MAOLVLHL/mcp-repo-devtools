@@ -113,3 +113,24 @@ export function redact(text: string): string {
   }
   return out;
 }
+
+/**
+ * Apply the same redactor to every string inside a JSON-shaped value:
+ * structured content leaves the process exactly like text does.
+ */
+export function redactDeep<T>(value: T): T {
+  if (typeof value === "string") {
+    return redact(value) as unknown as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item: unknown) => redactDeep(item)) as unknown as T;
+  }
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = redactDeep(item);
+    }
+    return out as unknown as T;
+  }
+  return value;
+}

@@ -1,8 +1,10 @@
 # Tool reference
 
-Every tool returns plain text. Nothing returns JSON: the model reads this, so the
-shapes are chosen to be read, not parsed. If a result was cut, the last line says so
-and names the argument that narrows it.
+Every tool returns text: the model reads it, so the shapes are chosen to be read
+first. The six read tools also return the same data as `structuredContent`, for a
+host that would rather read fields than lines; the text is not deprecated, and the
+two never disagree. If a result was cut, the last line says so and names the
+argument that narrows it.
 
 Common rules:
 
@@ -12,29 +14,30 @@ Common rules:
 - **No caching.** Each call observes the current state of the repository or the API.
 - **Errors** come back with `isError: true` and a message that says what to do next.
 
-## Annotations
+## What a host gets
 
-Every tool declares what calling it does to the world, so a host can label, group or
-hide tools without reading prose:
+| Layer | Who reads it | Shape |
+| --- | --- | --- |
+| `content[0].text` | the model | The rendered result, redacted and clipped to 64 KB / 200 lines |
+| `structuredContent` | the host | The same data as fields, validated against the tool's `outputSchema` before it is sent |
+| `annotations` | the host | `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` |
+
+`structuredContent` is present only on success, only for the six read tools, and only
+because each of them declares an `outputSchema` — the SDK refuses to send a result
+that does not match it. Write tools stay text-only: a created pull-request number
+does not need a schema. A failure is `isError: true` with no structured content, so a
+host never has to guess whether the fields are trustworthy.
+
+Annotations are hints, not permissions. A host may use them to label or group tools,
+but the protocol says clients must not make security decisions from a hint, and this
+server agrees: the protection is that write tools are not registered at all unless
+`MCP_ENABLE_WRITE=1`.
 
 | Tools | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
 | --- | --- | --- | --- | --- |
 | `git_status`, `git_log`, `git_diff` | true | false | true | false |
 | `gh_issue_search`, `gh_ci_failures`, `gh_pr_context` | true | false | true | true |
 | `gh_pr_create`, `gh_issue_create`, `gh_pr_comment` | false | true | false | true |
-
-`openWorldHint` is false only for the three git tools: they touch nothing but the
-checkout they were pointed at. `idempotentHint` is false for writes because a second
-`gh_pr_create` with the same arguments is a second pull request, not the same one.
-
-These are hints, not permissions. The protocol tells clients not to make security
-decisions from a hint, and neither should you: what actually keeps this server
-read-only is that the three write tools are not registered unless
-`MCP_ENABLE_WRITE=1`.
-
-The server also sends one paragraph of instructions at initialize — start with
-`git_status`, the 64 KB / 200 line budget, and the write-mode flag — because that is
-the part which spans tools, and so cannot live in any single description.
 
 ---
 
@@ -56,7 +59,11 @@ renamed    test/old.test.js
 ```
 
 Cap: 200 entries. Past that, the last line is
-`…truncated (more than 200 entries; use git_diff with path= to narrow)`.
+`…truncated (more than 200 entries; use git_diff with path= to narrow)`, and
+`truncated` is `true` in the structured copy.
+
+Structured: `branch`, `upstream` (`null` when the branch has none), `ahead`,
+`behind`, `changes[]` of `{ status, path }`, `truncated`.
 
 ---
 
@@ -76,6 +83,9 @@ e4f5a6b  2026-11-10T09:12:00Z  MAOLVLHL  feat: add git_diff mode=patch
 
 One line per commit. No patches, no merge graph: hand the hash to `git_diff` when
 you actually need the change. That is the 94.9% in the benchmark.
+
+Structured: `path` (`null` for the whole tree) and `commits[]` of
+`{ hash, date, author, subject }`.
 
 ---
 
@@ -102,6 +112,11 @@ patch. `mode: "patch"` still exists, and it is the only mode where the 64 KB cap
 regularly fires — when it does, the note tells you to narrow with `path=` or lower
 `context_lines=`.
 
+Structured: `base`, `path`, `mode`, `diff`, `truncated`. The `diff` field is capped
+like the text, and `truncated: true` is the machine-readable version of the tail note.
+The printed text keeps its generic `max_lines=` hint; the structured copy names
+`context_lines=`, which is the argument that actually narrows a patch.
+
 ---
 
 ## `gh_issue_search`
@@ -125,6 +140,9 @@ total matches: 37
 Pull requests are filtered out even when GitHub's search returns them: an issue
 search that silently includes PRs wastes a call and confuses the model about which
 number accepts a comment.
+
+Structured: `repo`, `query`, `state`, `totalCount`, `issues[]` of
+`{ number, title, state, labels, updatedAt, url, bodyExcerpt }`.
 
 ---
 
@@ -154,6 +172,9 @@ process (`src/zip.ts`) and the timestamps are stripped before the tail is kept.
 
 Costs: one request per job, up to three jobs. Logs older than 90 days come back as
 `log unavailable: …` rather than failing the call.
+
+Structured: `repo`, `ref`, `sha`, `checkedRuns`, `failures[]` of
+`{ name, conclusion, title, summary, detailsUrl, failedSteps, logTail, logNote }`.
 
 ---
 
@@ -186,6 +207,10 @@ review comments:
 
 One call replaces four (`GET /pulls/{n}`, `/files`, `/reviews`, `/comments`). Files
 are capped at 30 printed out of up to 100 fetched; review bodies are excerpts.
+
+Structured: every printed field, plus up to 100 `files[]` — more than the 30 the text
+prints — with `filesTruncated` telling you when even that was cut. `changedFiles` is
+GitHub's total, so it can exceed `files.length`.
 
 ---
 

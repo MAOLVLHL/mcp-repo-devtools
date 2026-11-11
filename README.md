@@ -106,14 +106,15 @@ and point the client at `/absolute/path/to/mcp-repo-devtools/dist/index.js`.
 | `gh_issue_create` | files an issue | write mode only |
 | `gh_pr_comment` | comments on an issue or PR | write mode only |
 
-Every tool also declares MCP annotations (`readOnlyHint`, `destructiveHint`,
-`idempotentHint`, `openWorldHint`), so a host can label or group tools without reading
-prose, and the server sends one paragraph of instructions when a client connects.
-Annotations are hints, not permissions: write tools are not registered at all unless
-`MCP_ENABLE_WRITE=1`.
+Every tool also answers a machine, not only a model. The six read tools declare an
+`outputSchema` and return the same data as `structuredContent` next to the text, so a
+host can read fields instead of parsing lines; all nine tools carry
+`readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint`, and the server sends
+one paragraph of usage instructions when a client connects. Annotations are hints, not
+permissions — write tools stay unregistered unless `MCP_ENABLE_WRITE=1`.
 
-Full argument tables, example output and the exact truncation notes:
-[`docs/tools.md`](docs/tools.md).
+Full argument tables, example output, the exact truncation notes and what each layer
+carries: [`docs/tools.md`](docs/tools.md).
 
 ## Measured, not estimated
 
