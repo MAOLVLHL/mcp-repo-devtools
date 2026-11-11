@@ -82,4 +82,4 @@ jobs:
             grep -m1 -E '^(git fixtures:|fixtures:)' eval-baseline.txt || true
             grep -m1 -E '^gate:' eval-gate.txt || true
             echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
