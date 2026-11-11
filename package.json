@@ -1,7 +1,7 @@
 {
   "name": "mcp-repo-devtools",
-  "version": "0.2.1",
-  "description": "MCP server for git history, GitHub issues, CI failures and pull requests.",
+  "version": "0.3.0",
+  "description": "Tool surface for coding agents: bounded git and GitHub tools, a reference agent loop, and an eval that can fail it.",
   "type": "module",
   "bin": {
     "mcp-repo-devtools": "dist/index.js"
@@ -36,10 +36,15 @@
   "keywords": [
     "mcp",
     "model-context-protocol",
+    "coding-agent",
+    "ai-agent",
+    "agent-tools",
+    "llm-tools",
     "git",
     "github",
     "ci",
     "developer-tools",
+    "evaluation",
     "claude-code",
     "codex",
     "cursor"

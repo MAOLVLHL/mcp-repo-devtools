@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.0 - 2026-11-11
+
 ### Added
 
 - All nine tools carry MCP annotations (`readOnlyHint`, `destructiveHint`,
@@ -87,6 +89,11 @@
   which `test_total` never calls; a real model pointed that out in every run, and was
   right. The oracle could not catch it, because the oracle cites `expected_commit` by
   construction.
+- The package now describes itself from the agent's side: the README opens with the
+  agent contract (annotations, structured content, progress, cancellation, the write gate,
+  the prompts, the loop and the eval) and with the rules an agent should follow when it
+  reads the page, and `package.json` carries the description and keywords that say so.
+  No behaviour changed with the wording.
 
 ## 0.2.1 - 2026-11-11
 
