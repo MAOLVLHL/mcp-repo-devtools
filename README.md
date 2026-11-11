@@ -1,78 +1,67 @@
 # mcp-repo-devtools
 
-MCP server for the things you look up before touching a repository: **git history, GitHub issues, CI failures, and pull requests**. Read-only by default.
+[![CI](https://github.com/MAOLVLHL/mcp-repo-devtools/actions/workflows/ci.yml/badge.svg)](https://github.com/MAOLVLHL/mcp-repo-devtools/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/mcp-repo-devtools?label=npm)](https://www.npmjs.com/package/mcp-repo-devtools)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![node >= 20.11](https://img.shields.io/badge/node-%E2%89%A520.11-informational)
 
-An agent that can read a whole log file will read a whole log file. This server gives it narrow tools instead, each with a hard output budget and a hard boundary on what it may touch.
+**An agent that can read a whole log file will read a whole log file.**
 
-```text
-git_status        branch, upstream, ahead/behind, changed paths
-git_log           newest commits, optionally scoped to a path
-git_diff          --stat by default, unified patch on request
-gh_issue_search   issues in one repo, newest activity first
-gh_ci_failures    only the failing checks, failed steps, optional log tail
-gh_pr_context     title, body, files, reviews and review comments
+`mcp-repo-devtools` is an MCP server for the four things an agent looks up *before* it
+touches a repository — working tree, history, issues, CI failures — plus pull-request
+context and three opt-in write tools. Every result has a hard budget, every query has a
+hard boundary, and both are measured rather than asserted.
 
-with MCP_ENABLE_WRITE=1 additionally:
-gh_pr_create      open a pull request from a pushed branch
-gh_issue_create   file an issue
-gh_pr_comment     comment on an issue or pull request
-```
+- **Bounded, and measured.** On a real failed CI run, reading the logs it needed cost
+  **322,887 bytes raw; the tool returned 13,915** (95.7% less). Issue search over a
+  busy repository: **176,170 → 4,371** (97.5%). Twenty commits with `git log -p`:
+  **19,300 → 992** (94.9%). The numbers, the fixtures and the caveats are in
+  [`bench/README.md`](bench/README.md); the script that produced them is
+  [`bench/measure.mjs`](bench/measure.mjs).
+- **Read-only by construction.** Thirteen git subcommands, an argv array, no shell
+  anywhere. The three write tools exist only when `MCP_ENABLE_WRITE=1`, and each one
+  logs a line to stderr before the request goes out.
+- **Rooted, not vibes.** `MCP_ALLOWED_ROOTS` is required; paths are `realpath`-resolved
+  before the containment check, filesystem roots are refused, and model-supplied refs
+  cannot start with `-`.
+- **Small surface, honest failures.** Six tools by default. Errors say what to do next
+  (`Error: GitHub rate limit exhausted; resets at … Set GITHUB_TOKEN …`), and truncation
+  is never silent — the last line names the argument that narrows the next call.
 
-There is no `git push`, no shell, no arbitrary URL fetch. The write tools only
-exist when `MCP_ENABLE_WRITE=1`, and every write logs a line to stderr.
-
-## Why a separate server
-
-- **Read-only by construction.** Subcommands come from an allowlist; there is no code path that can run `push`, `config` or an arbitrary shell.
-- **Bounded output.** Every result is cut to 200 lines / 64 KB and ends with a hint that tells the model how to narrow the next call.
-- **No credential leaks.** Every string returned to the model passes through a redactor for `ghp_` / `github_pat_` / `Bearer` tokens before it leaves the process.
-- **Roots, not vibes.** `MCP_ALLOWED_ROOTS` is required; paths are resolved with `realpath` before the comparison, so a symlink cannot walk out of the allowed tree.
-
-## Install
-
-From source (works today):
+## Quickstart
 
 ```bash
-git clone https://github.com/MAOLVLHL/mcp-repo-devtools
-cd mcp-repo-devtools
-npm install
-npm run build
+npx -y mcp-repo-devtools --help     # prints the env contract and exits
 ```
 
-From npm (after the first publish):
-
-```bash
-npx -y mcp-repo-devtools --help
-```
-
-Either way the server speaks MCP over stdio and needs two environment variables:
+The server speaks MCP over stdio. Two variables matter:
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
-| `MCP_ALLOWED_ROOTS` | yes | Directories the server may read, separated by the platform path separator (`:` on Unix, `;` on Windows). Filesystem roots are refused. |
-| `GITHUB_TOKEN` | no | Raises the GitHub API limit from 60 to 5000 requests/hour. Read access is enough; the write tools need write access and do not work without it. |
-| `MCP_ENABLE_WRITE` | no | Set to `1` to also register `gh_pr_create`, `gh_issue_create` and `gh_pr_comment`. Anything else keeps the server read-only. |
+| `MCP_ALLOWED_ROOTS` | yes | Directories the server may read, separated by the platform separator (`:` on Unix, `;` on Windows). A filesystem root is refused. |
+| `GITHUB_TOKEN` | no | Raises the GitHub limit from 60 to 5000 requests/hour and is required for log tails and for writes. Fine-grained, read-only is enough for the read tools. |
+| `MCP_ENABLE_WRITE` | no | `1` adds `gh_pr_create`, `gh_issue_create`, `gh_pr_comment`. Anything else keeps the server read-only. |
 
 ## Configure a client
 
-Claude Code:
+**Claude Code**
 
 ```bash
 claude mcp add repo-devtools -s project \
   -e MCP_ALLOWED_ROOTS=/home/you/code \
   -e GITHUB_TOKEN=$GITHUB_TOKEN \
-  -- node /absolute/path/to/mcp-repo-devtools/dist/index.js
-claude mcp list
+  -- npx -y mcp-repo-devtools
+claude mcp list        # repo-devtools: … ✓ Connected
 ```
 
-Cursor (`.cursor/mcp.json` in the project, or the same shape in `~/.cursor/mcp.json`):
+**Cursor** — `.cursor/mcp.json` in the project, or the same shape in `~/.cursor/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "repo-devtools": {
-      "command": "node",
-      "args": ["/absolute/path/to/mcp-repo-devtools/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "mcp-repo-devtools"],
       "env": {
         "MCP_ALLOWED_ROOTS": "/home/you/code",
         "GITHUB_TOKEN": "${env:GITHUB_TOKEN}"
@@ -82,160 +71,129 @@ Cursor (`.cursor/mcp.json` in the project, or the same shape in `~/.cursor/mcp.j
 }
 ```
 
-Codex (`~/.codex/config.toml`):
+**Codex** — `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.repo-devtools]
-command = "node"
-args = ["/absolute/path/to/mcp-repo-devtools/dist/index.js"]
-env = { MCP_ALLOWED_ROOTS = "/home/you/code" }
+command = "npx"
+args = ["-y", "mcp-repo-devtools"]
+env = { MCP_ALLOWED_ROOTS = "/home/you/code", GITHUB_TOKEN = "ghp_…" }
 ```
 
-Restart the client, then ask it to "check the git status of this repo". Tool names appear exactly as listed above.
+Restart the host, then ask it to "check the git status of this repo". Tool names appear
+exactly as listed below. From a checkout instead of npm: `npm install && npm run build`
+and point the client at `/absolute/path/to/mcp-repo-devtools/dist/index.js`.
 
-## Tools
+## The tools
 
-### `git_status`
-
-| Argument | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `repo` | string | required | Absolute path, inside `MCP_ALLOWED_ROOTS` |
-
-Returns the branch, upstream, ahead/behind counts and up to 200 changed paths with a status word (`modified`, `untracked`, `renamed`, …).
-
-### `git_log`
-
-| Argument | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `repo` | string | required | Absolute path |
-| `path` | string | – | Scope history to a file or directory |
-| `limit` | int 1–100 | `20` | Number of commits |
-
-### `git_diff`
-
-| Argument | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `repo` | string | required | Absolute path |
-| `base` | string | `HEAD` | Ref, tag or sha; must not start with `-` |
-| `path` | string | – | Scope the diff |
-| `mode` | `stat` \| `patch` | `stat` | `patch` returns a unified diff |
-| `context_lines` | int 0–50 | `3` | Hunk context in patch mode |
-
-### `gh_issue_search`
-
-| Argument | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `repo` | string | required | `owner/name` |
-| `query` | string | `""` | Search terms, e.g. `label:bug timeout` |
-| `state` | `open` \| `closed` \| `all` | `open` | |
-| `limit` | int 1–30 | `10` | |
-
-Search results only contain issues: pull requests are filtered out even if GitHub returns them.
-
-### `gh_ci_failures`
-
-| Argument | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `repo` | string | required | `owner/name` |
-| `ref` | string | required | Sha, branch, tag or PR head ref |
-| `include_logs` | boolean | `false` | Also fetch the tail of up to three failing job logs |
-| `log_lines` | int 10–200 | `40` | Lines of tail kept per job |
-
-Reads check runs, keeps the failing ones, then looks up the workflow job to name the failed steps. With `include_logs: true` it downloads that job's log archive, unpacks it in process, and keeps only the last `log_lines` lines — the part that usually holds the assertion. The archive is fetched by following GitHub's redirect without the token, so the credential never reaches the blob host. Expired logs (90 days) come back as `log unavailable: …` instead of failing the call.
-
-### `gh_pr_context`
-
-| Argument | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `repo` | string | required | `owner/name` |
-| `number` | int | required | Pull request number |
-
-One call returns the title, body excerpt, base/head, size, up to 100 changed files (30 printed), review states and review comments.
-
-## Write mode
-
-The server is read-only unless you ask for more. With `MCP_ENABLE_WRITE=1` three
-tools are added:
-
-| Tool | Argument | What it does |
+| Tool | One call returns | Notes |
 | --- | --- | --- |
-| `gh_pr_create` | `repo`, `title`, `head`, `base`, `body`, `draft` | Opens a pull request from a branch that is **already pushed** |
-| `gh_issue_create` | `repo`, `title`, `body`, `labels` | Files an issue |
-| `gh_pr_comment` | `repo`, `number`, `body` | Comments on an issue or pull request |
+| `git_status` | branch, upstream, ahead/behind, up to 200 changed paths | Start here; it tells you what to diff |
+| `git_log` | the newest commits, one line each, optionally scoped to a path | No patches — that is the point |
+| `git_diff` | `--stat` by default, unified patch on request | `base` accepts a rev, tag or sha |
+| `gh_issue_search` | issues in one repo, newest activity first, body excerpt | Pull requests are filtered out |
+| `gh_ci_failures` | only failing checks, failed step names, optional log tail | `include_logs: true` for the last 40 lines |
+| `gh_pr_context` | title, body, size, files, review states, review comments | Replaces four REST calls |
+| `gh_pr_create` | opens a PR from a branch already pushed | write mode only |
+| `gh_issue_create` | files an issue | write mode only |
+| `gh_pr_comment` | comments on an issue or PR | write mode only |
 
-What write mode deliberately cannot do: push, force-push, merge, close, delete a
-branch, edit files, or create a branch. Those either need a shell (which this
-server does not have) or belong to the agent's own git client. Every write call
-appends a line to stderr, so the host's logs show what the model changed.
+Full argument tables, example output and the exact truncation notes:
+[`docs/tools.md`](docs/tools.md).
 
-```bash
-MCP_ENABLE_WRITE=1 GITHUB_TOKEN=ghp_… node dist/index.js
-```
+## Measured, not estimated
 
-## Output contract
+The baseline in every row is the *good* version of what an agent does without this
+server: the same command, the same endpoint, no truncation. Measured 2026-11-11 on
+Windows 11, Node 22.14, git 2.56; tokens are bytes / 4.
 
-Every tool result is plain text, capped at **200 lines / 64 KB**, and ends with a note when something was cut:
+| Case | Naive | Tool | Saved |
+| --- | ---: | ---: | ---: |
+| `gh_ci_failures` — 3 failed jobs, real run | 322,887 B | 13,915 B | **95.7%** |
+| `gh_issue_search` — 30 raw results vs 10 formatted | 176,170 B | 4,371 B | **97.5%** |
+| `git_log` — 20 commits, `git log -p` | 19,300 B | 992 B | **94.9%** |
+| `git_diff` — 400 dirty files, patch vs stat | 75,960 B | 5,236 B | **93.1%** |
+| `git_diff` — HEAD~5, patch vs stat | 3,641 B | 290 B | **92.0%** |
+| `git_status` — 400 dirty files, capped at 200 | 8,320 B | 5,621 B | **32.4%** |
 
-```text
-…truncated (431 more lines; narrow with path= or max_lines=)
-```
+Caveats, stated rather than buried: n = 1 per cell; the git rows use generated fixtures
+so they reproduce anywhere, the GitHub rows hit a live public repository; and
+`gh_ci_failures` is *slower* than the naive path (10.4 s vs 5.1 s) because it resolves
+ref → commit → checks → jobs → logs before it decides what to download. Bytes and
+latency trade against each other, and the table only measures one side. Full method:
+[`bench/README.md`](bench/README.md).
 
-Errors come back as `isError: true` with a message that says what to do next, for example:
-
-```text
-Error: repository C:\tmp\x is outside MCP_ALLOWED_ROOTS (C:\code)
-Error: GitHub rate limit exhausted; resets at 2026-11-11T20:00:00.000Z. Set GITHUB_TOKEN to get 5000 requests/hour.
-```
-
-## Security model
+## Safety model
 
 | Control | Implementation |
 | --- | --- |
-| No shell | `child_process.execFile` with an argv array; nothing is interpolated into a command line |
-| No write commands | `ALLOWED_SUBCOMMANDS` in `src/git.ts` |
-| No config injection | `FORBIDDEN_FLAGS` rejects `-c`, `--exec-path`, `--upload-pack`, `--git-dir`, `--output`, … |
-| No path escape | `assertAllowedRepo` resolves with `realpath` and compares against `MCP_ALLOWED_ROOTS` |
-| No inherited git state | the child environment only carries `PATH`, `HOME`, `USERPROFILE`, `SystemRoot`, `TMP`, `TEMP`, `LANG` |
-| No secrets in output | `redact()` runs on every git stderr and every GitHub response |
-| No hanging | 10 s timeout per git call, 15 s per GitHub call |
+| No shell | `execFile("git", argv)`; nothing is interpolated into a command line |
+| No write commands | `ALLOWED_SUBCOMMANDS` (13 entries) in `src/git.ts` |
+| No config injection | `FORBIDDEN_FLAGS`: `-c`, `-C`, `--exec-path`, `--upload-pack`, `--git-dir`, `--work-tree`, `--config-env`, `--output`, … |
+| No path escape | `realpath` + `path.relative` containment against `MCP_ALLOWED_ROOTS` |
+| No inherited git state | child env limited to `PATH`, `HOME`, `USERPROFILE`, `SystemRoot`, `TMP`, `TEMP`, `LANG`, `LC_ALL` |
+| No secrets in output | every git stderr and GitHub response passes `redact()` |
+| No token to the blob host | job-log redirects are followed by hand, without `Authorization` |
+| No hanging | 10 s git, 15 s GitHub, 30 s log download |
 
-What this is **not**: a sandbox. It reads the repositories you point it at, with your user's permissions.
+Every benchmark run also fires four boundary probes (path escape, `--output`,
+shell metacharacters in a ref, a malformed `owner/name`) and requires all four to be
+refused — see [`bench/README.md`](bench/README.md#boundary-probes). The full threat
+model, including what these controls do **not** cover, is in
+[`docs/security.md`](docs/security.md).
+
+## What this is not
+
+- **Not a sandbox.** It reads the roots you configure, with your permissions. Point it
+  at a code directory, not at your home directory.
+- **Not an agent.** It has no loop, no planning, no memory between calls.
+- **Not a GitHub client.** No push, merge, close, branch creation, or file editing.
+  Those belong to the agent's own git client, where the human already watches.
+- **Not an injection filter.** Commit messages, issue bodies and log lines are returned
+  as data; a string that says "ignore previous instructions" is still a string.
+- **Not an HTTP service.** stdio only. A hosted mode needs an auth design before it can
+  be safe, and that design is not in this repository.
 
 ## Development
 
 ```bash
 npm install
 npm run build        # tsc -> dist/
-npm test             # build + node:test (49 tests)
+npm test             # build + node:test, 53 tests
+npm run snapshot     # rewrite tests/fixtures/tool-surface.json after a surface change
+npm run bench        # the measurement above (needs a checkout, and a token for GitHub rows)
 npm run inspect      # MCP Inspector against the built server
 ```
 
-A manual smoke test against a real checkout:
-
-```bash
-node scripts/smoke.mjs /path/to/repo owner/name
-```
-
-Layout:
+The tool surface is a contract: `tests/contract.test.ts` fails if a tool appears,
+disappears, or changes its arguments without the snapshot being updated on purpose.
 
 ```text
 src/config.ts   MCP_ALLOWED_ROOTS parsing and realpath containment
 src/git.ts      execFile wrapper, allowlists, status/log/diff
-src/github.ts   REST calls for issues, checks, pull requests and writes
-src/zip.ts      minimal zip reader for Actions job logs
-src/text.ts     output budget, log tail and credential redaction
+src/github.ts   REST reads, CI log download, opt-in writes
+src/zip.ts      minimal zip reader for Actions log archives
+src/text.ts     output budget, log tail, credential redaction
 src/server.ts   tool registration and text formatting
 src/index.ts    stdio entry point
 ```
 
-`docs/architecture.md` has the trust-boundary diagram and the request lifecycle.
+Docs: [architecture](docs/architecture.md) · [tool reference](docs/tools.md) ·
+[security model](docs/security.md) · [measurements](bench/README.md).
 
 ## Roadmap
 
-- `gh_ci_failures`: extract only the lines around the first error marker instead of a fixed tail
-- `gh_issue_search`: cache ETags between calls
+- `gh_ci_failures`: cut around the first error marker instead of keeping a fixed tail
+- `gh_issue_search`: ETag caching between calls
 - `git_blame` / `git_show`: already allowed at the transport layer, not exposed yet
-- HTTP transport for hosted use (out of scope for now: stdio keeps the trust boundary simple)
+- HTTP transport: out of scope until there is an auth design worth shipping
+
+## Contributing
+
+Issues and pull requests are welcome. Please run `npm test` before opening a PR, and if
+you change the tool surface, include the `tests/fixtures/tool-surface.json` diff —
+that diff is the review record. Security reports: see
+[`SECURITY.md`](SECURITY.md).
 
 ## License
 

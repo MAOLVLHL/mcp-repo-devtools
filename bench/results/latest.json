@@ -1,0 +1,96 @@
+{
+  "generatedAt": "2026-11-11T11:14:50.144Z",
+  "platform": "win32 x64",
+  "node": "v22.14.0",
+  "git": "git version 2.56.0.windows.4",
+  "repo": "D:\\dsh\\work\\repo-devtools",
+  "ghRepo": "HKUDS/nanobot",
+  "ciRepo": "HKUDS/nanobot",
+  "cases": [
+    {
+      "name": "git_log",
+      "note": "fixture, 20 commits, git log -p",
+      "naiveBytes": 19300,
+      "toolBytes": 992,
+      "saved": 0.949,
+      "naiveMs": 48,
+      "toolMs": 46
+    },
+    {
+      "name": "git_diff",
+      "note": "fixture, HEAD~5 patch vs stat",
+      "naiveBytes": 3641,
+      "toolBytes": 290,
+      "saved": 0.92,
+      "naiveMs": 38,
+      "toolMs": 41
+    },
+    {
+      "name": "gh_issue_search",
+      "note": "HKUDS/nanobot raw JSON vs 10 issues",
+      "naiveBytes": 176170,
+      "toolBytes": 4371,
+      "saved": 0.975,
+      "naiveMs": 1525,
+      "toolMs": 1200
+    },
+    {
+      "name": "gh_ci_failures",
+      "note": "HKUDS/nanobot run 42998518695, 3 failed job(s)",
+      "naiveBytes": 322887,
+      "toolBytes": 13915,
+      "saved": 0.957,
+      "naiveMs": 5149,
+      "toolMs": 10378
+    },
+    {
+      "name": "git_status",
+      "note": "fixture, 400 dirty files, cap at 200",
+      "naiveBytes": 8320,
+      "toolBytes": 5621,
+      "saved": 0.324,
+      "naiveMs": 85,
+      "toolMs": 88
+    },
+    {
+      "name": "git_diff",
+      "note": "fixture, 400 dirty, patch vs stat",
+      "naiveBytes": 75960,
+      "toolBytes": 5236,
+      "saved": 0.931,
+      "naiveMs": 205,
+      "toolMs": 221
+    },
+    {
+      "name": "git_diff",
+      "note": "fixture, patch mode cut by 64 KB / 200 line cap",
+      "naiveBytes": 75960,
+      "toolBytes": 5491,
+      "saved": 0.928,
+      "naiveMs": 205,
+      "toolMs": 212
+    }
+  ],
+  "probes": [
+    {
+      "name": "path outside MCP_ALLOWED_ROOTS",
+      "refused": true,
+      "sample": "Error: repository D:\\dsh is outside MCP_ALLOWED_ROOTS (D:\\dsh\\work\\repo-devtools;D:\\dsh\\work\\tmp)"
+    },
+    {
+      "name": "ref that starts with -",
+      "refused": true,
+      "sample": "Error: base is not a valid git ref: \"--output=/tmp/x\""
+    },
+    {
+      "name": "shell metacharacters as a ref",
+      "refused": true,
+      "sample": "Error: base is not a valid git ref: \"HEAD; echo pwned\""
+    },
+    {
+      "name": "owner/name with spaces",
+      "refused": true,
+      "sample": "Error: repo must look like owner/name, got: \"not a repo\""
+    }
+  ]
+}
