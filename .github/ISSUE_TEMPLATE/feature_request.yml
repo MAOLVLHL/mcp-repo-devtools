@@ -1,0 +1,32 @@
+name: Feature request
+description: A tool, an argument, or a budget that would make the server more useful.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What does the agent do today instead, and what does that cost?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed shape
+      description: Tool name, arguments, and roughly what it returns.
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security surface
+      description: |
+        What can this reach — paths, subprocesses, network hosts? Which allowlist does it
+        go through, or why does it need a new one?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Could an existing tool plus a narrower argument do this?

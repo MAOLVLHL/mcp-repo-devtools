@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/MAOLVLHL/mcp-repo-devtools/security/advisories/new
+    about: Please report vulnerabilities privately, not as an issue.
+  - name: Question / usage help
+    url: https://github.com/MAOLVLHL/mcp-repo-devtools/discussions
+    about: Setup problems and "how do I point this at X" belong in Discussions.

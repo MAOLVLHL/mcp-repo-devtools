@@ -25,3 +25,23 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # The published tarball is the artifact users actually run; check it boots.
+      - run: npm pack --dry-run
+      - run: node dist/index.js --help
+      - name: The tarball contains dist and not the sources
+        run: |
+          npm pack --silent > /dev/null
+          tar -tzf mcp-repo-devtools-*.tgz | grep -q '^package/dist/index.js$'
+          if tar -tzf mcp-repo-devtools-*.tgz | grep -q '^package/src/'; then
+            echo "src/ leaked into the tarball"; exit 1
+          fi

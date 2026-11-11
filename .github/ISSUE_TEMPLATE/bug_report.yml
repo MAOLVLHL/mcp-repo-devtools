@@ -1,0 +1,60 @@
+name: Bug report
+description: Something returned the wrong thing, refused a valid call, or leaked a path.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not paste real tokens. Redact them as `ghp_…`.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `npx -y mcp-repo-devtools --version`, or the commit sha.
+    validations:
+      required: true
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Tool
+      options:
+        - git_status
+        - git_log
+        - git_diff
+        - gh_issue_search
+        - gh_ci_failures
+        - gh_pr_context
+        - gh_pr_create
+        - gh_issue_create
+        - gh_pr_comment
+        - server startup / configuration
+    validations:
+      required: true
+  - type: textarea
+    id: call
+    attributes:
+      label: The call
+      description: The exact arguments, and how the host invoked them.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+      description: The returned text, or the error. Truncate long output.
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: OS, Node version, git version
+      placeholder: Windows 11, Node 22.14.0, git 2.56.0
+    validations:
+      required: true
