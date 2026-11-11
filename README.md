@@ -123,6 +123,36 @@ and the running `git` process.
 Full argument tables, example output, the exact truncation notes and what each layer
 carries: [`docs/tools.md`](docs/tools.md).
 
+## Reference agent
+
+The server is not an agent: it holds no loop, no planning and no memory between calls.
+[`src/agent/`](src/agent/) is the smallest loop that is one, built on the same six read
+tools, answering one question — *which commit introduced this CI failure?*
+
+```bash
+npm run demo:agent     # offline: a failing CI call, a real git log, a report
+```
+
+```text
+src/agent/provider.ts   Provider seam; OpenAI-compatible and scripted implementations
+src/agent/mcp-tools.ts  the server's tools as a toolbox a model can call
+src/agent/loop.ts       turn/tool loop with turn, call and byte caps
+src/agent/diagnose.ts   the CI-failure task: system prompt, target, run
+src/agent/cli.ts        node dist/agent/cli.js --repo owner/name --ref main
+```
+
+`runAgent` sends the conversation, executes the tool calls that come back, appends the
+results, and stops when the model answers without calling a tool. Caps: 8 turns, 4 calls
+per turn, 24 KiB per result. The run is read-only by construction — it connects with
+`enableWrite: false`, so the three write tools are never registered — and it reports why
+it stopped (`final`, `max-turns`, `cancelled`). A tool that throws, or a call whose
+arguments were not valid JSON, becomes a tool result with `isError: true` rather than an
+exception. The provider seam is one method, so the same loop runs against OpenAI, an
+Ollama or vLLM endpoint, or a scripted list of turns in the tests.
+
+Details, including how to point it at any OpenAI-compatible gateway:
+[`docs/agent.md`](docs/agent.md).
+
 ## Measured, not estimated
 
 The baseline in every row is the *good* version of what an agent does without this
@@ -145,7 +175,7 @@ ref → commit → checks → jobs → logs before it decides what to download. 
 latency trade against each other, and the table only measures one side. Full method:
 [`bench/README.md`](bench/README.md).
 
-## Safety model
+
 
 | Control | Implementation |
 | --- | --- |
@@ -168,7 +198,9 @@ model, including what these controls do **not** cover, is in
 
 - **Not a sandbox.** It reads the roots you configure, with your permissions. Point it
   at a code directory, not at your home directory.
-- **Not an agent.** It has no loop, no planning, no memory between calls.
+- **Not an agent.** The server has no loop, no planning and no memory between calls.
+  The reference loop in `src/agent/` is a client of it: read-only, one task, not exposed
+  as a tool.
 - **Not a GitHub client.** No push, merge, close, branch creation, or file editing.
   Those belong to the agent's own git client, where the human already watches.
 - **Not an injection filter.** Commit messages, issue bodies and log lines are returned
@@ -181,10 +213,11 @@ model, including what these controls do **not** cover, is in
 ```bash
 npm install
 npm run build        # tsc -> dist/
-npm test             # build + node:test, 53 tests
+npm test             # build + node:test, 99 tests
 npm run snapshot     # rewrite tests/fixtures/tool-surface.json after a surface change
 npm run bench        # the measurement above (needs a checkout, and a token for GitHub rows)
 npm run inspect      # MCP Inspector against the built server
+npm run demo:agent   # the reference loop, offline, no key
 ```
 
 The tool surface is a contract: `tests/contract.test.ts` fails if a tool appears,
@@ -197,11 +230,13 @@ src/github.ts   REST reads, CI log download, opt-in writes
 src/zip.ts      minimal zip reader for Actions log archives
 src/text.ts     output budget, log tail, credential redaction
 src/server.ts   tool registration and text formatting
+src/agent/      reference loop: provider, toolbox, loop, diagnose task, CLI
 src/index.ts    stdio entry point
 ```
 
 Docs: [architecture](docs/architecture.md) · [tool reference](docs/tools.md) ·
-[security model](docs/security.md) · [measurements](bench/README.md).
+[reference agent](docs/agent.md) · [security model](docs/security.md) ·
+[measurements](bench/README.md).
 
 ## Roadmap
 
