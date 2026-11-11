@@ -16,7 +16,7 @@ would be worthless.
 | `git_log` | `git log -n 20 -p --format=…` — full patches for 20 commits | one line per commit, hash / date / author / subject |
 | `git_diff` | `git diff HEAD~5` — the full patch | `--stat` for the same base; `mode: "patch"` if you want the diff |
 | `gh_issue_search` | `GET /search/issues?per_page=30`, raw JSON | 10 issues, one block each, body cut to a 160-character excerpt |
-| `gh_ci_failures` | the full downloadable log of every failed job | failed steps only, plus the last 40 lines of up to three job logs |
+| `gh_ci_failures` | the full downloadable log of every failed job | failed steps only, plus 40 lines around the first error for up to three job logs (a 20-line window when `include_logs` is on) |
 | `git_status` | `git status --porcelain -b --untracked-files=all` | the same, capped at 200 entries with an explicit truncation line |
 
 The `git_log`, `git_diff` and `git_status` rows run against generated fixtures, so
@@ -32,13 +32,13 @@ Tokens are bytes / 4, which is a rough conversion, not a tokenizer count.
 
 | Case | Naive bytes | Tool bytes | Saved | Naive ms | Tool ms |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `git_log` — 20 commits, `git log -p` | 19,300 | 992 | 94.9% | 48 | 46 |
-| `git_diff` — HEAD~5, patch vs stat | 3,641 | 290 | 92.0% | 38 | 41 |
-| `gh_issue_search` — nanobot, raw JSON vs 10 issues | 176,170 | 4,371 | 97.5% | 1,525 | 1,200 |
-| `gh_ci_failures` — nanobot run 42998518695, 3 failed jobs | 322,887 | 13,915 | 95.7% | 5,149 | 10,378 |
-| `git_status` — 400 dirty files, capped at 200 | 8,320 | 5,621 | 32.4% | 85 | 88 |
-| `git_diff` — 400 dirty, patch vs stat | 75,960 | 5,236 | 93.1% | 205 | 221 |
-| `git_diff` — 400 dirty, patch mode under the 64 KB cap | 75,960 | 5,491 | 92.8% | 205 | 212 |
+| `git_log` — 20 commits, `git log -p` | 19,300 | 992 | 94.9% | 49 | 53 |
+| `git_diff` — HEAD~5, patch vs stat | 3,641 | 290 | 92.0% | 40 | 41 |
+| `gh_issue_search` — nanobot, raw JSON vs 10 issues | 176,170 | 4,371 | 97.5% | 1,774 | 1,293 |
+| `gh_ci_failures` — nanobot run 43035626612, 3 failed jobs | 405,577 | 12,218 | 97.0% | 4,735 | 15,860 |
+| `git_status` — 400 dirty files, capped at 200 | 8,320 | 5,621 | 32.4% | 166 | 90 |
+| `git_diff` — 400 dirty, patch vs stat | 75,960 | 5,236 | 93.1% | 168 | 169 |
+| `git_diff` — 400 dirty, patch mode under the 64 KB cap | 75,960 | 5,491 | 92.8% | 168 | 179 |
 
 Raw JSON, including the probe results below: [`results/latest.json`](results/latest.json).
 
@@ -60,7 +60,7 @@ These are honest limits, not disclaimers to skip:
 
 - **n = 1 per cell.** These are single runs, not medians. GitHub latency moved by
   more than a second between two runs of the same call.
-- **`gh_ci_failures` is slower than the naive path (10.4 s vs 5.1 s).** It resolves
+- **`gh_ci_failures` is slower than the naive path (15.9 s vs 4.7 s).** It resolves
   the ref to a commit, then to check runs, then to jobs, then downloads up to three
   logs — four round trips where the naive path downloads logs it already knows about.
   The trade is bytes for latency; whether that is a good trade depends on your context

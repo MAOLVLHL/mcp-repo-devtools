@@ -172,23 +172,31 @@ Structured: `repo`, `query`, `state`, `totalCount`, `issues[]` of
 | --- | --- | --- | --- |
 | `repo` | string | required | `owner/name` |
 | `ref` | string | required | Sha, branch, tag or PR head ref |
-| `include_logs` | boolean | `false` | Fetch log tails for up to three failing jobs |
-| `log_lines` | int 10–200 | `40` | Tail length per job |
+| `include_logs` | boolean | `false` | Fetch the log around the first error for up to three failing jobs |
+| `log_lines` | int 10–200 | `40` | Lines kept per job, centred on the error |
 
 ```text
 repo HKUDS/nanobot  ref 3f2a1c9b8d7e  (3f2a1c9b8d7e)
 14 check run(s), 3 failing
   test (ubuntu)  failure
     failed steps: pytest
-    log tail:
-      …
+    log:
+      …(812 earlier lines omitted)
       E   AssertionError: expected 200, got 502
+      …
+      …(96 later lines omitted)
 ```
 
 The log is downloaded by following GitHub's redirect **without** the token, so the
 credential never reaches the signed blob URL. GitHub serves that blob as either a zip
 archive or plain text with a BOM and per-line runner timestamps; both are decoded in
-process (`src/zip.ts`) and the timestamps are stripped before the tail is kept.
+process (`src/zip.ts`) and the timestamps are stripped before the window is kept.
+
+The window is centred on the first line that looks like a failure, not taken from the
+end: the last forty lines of a job log are teardown and "process completed with exit
+code 1", which is the one thing a model can already infer. The window keeps five lines
+of run-up and spends the rest on the stack trace. A log with no marker in it degrades to
+a plain tail, so nothing that worked before stops working.
 
 Costs: one request per job, up to three jobs. Logs older than 90 days come back as
 `log unavailable: …` rather than failing the call.

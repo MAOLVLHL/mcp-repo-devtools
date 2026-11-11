@@ -1,9 +1,25 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 - 2026-11-12
 
 ### Added
 
+- Six `github` fixtures, and a fixture kind to hold them: each one is a real repository
+  plus a stubbed workflow run — check runs, the run's jobs, and the failing job's log behind
+  a redirect — so a regression whose only evidence is a CI log is now scored. The other
+  thirty stay `kind: "git"`, where the checkout is the evidence.
+- `--kind git|github|all` on the eval CLI, and a per-kind line in the summary, because a
+  score over both kinds hides which half of the tool surface earned it.
+- No miss is waived, on either arm, and no fixture is exempt. The raw arm is scored on the
+  thirty git fixtures (`npm run eval:baseline` passes `--kind git`) because its single tool
+  cannot read a CI log; `--arm baseline --kind all` exits 1, truthfully. The measured run
+  then showed the six CI fixtures do not separate the arms either: a real model holding
+  nothing but git solved all **18/18** of them, at 8,247 tokens per case against the typed
+  arm's 14,905. That is published in `docs/eval.md` rather than tuned away.
+- `tests/eval-github.test.ts`: the stub answers the three routes `gh_ci_failures` asks for
+  (and 404s everything else), the log download redirects to a host that never receives the
+  token, the oracle solves a CI fixture on the typed arm, and the scripted raw arm scores
+  it as a miss because no scripted trajectory of one `git` call can reach a workflow log.
 - The eval now has thirty fixtures, up from ten: twelve Python and eight JavaScript,
   covering money rounded wrong, an off-by-one paginator, a mutable default argument, a
   cache key that lost the tenant, an in-place sort, a race on a cache miss, and twenty-two
@@ -21,9 +37,9 @@
 - `tests/eval-baseline.test.ts`: the parse rejects a record that cannot gate, a regression
   fails, a recovery does not, an unmeasured fixture fails until it is recorded, and
   `--max-regressions` tolerates exactly what it is told to.
-- `ci.yml` grows an `eval` job: both arms through the scripted oracle (30/30 each) and then
-  `eval:check`, so a broken fixture or a drifted harness fails a pull request with no model
-  and no secret.
+- `ci.yml` grows an `eval` job: both arms through the scripted oracle (36/36 on the typed
+  arm, 30/30 on the raw one over the git kind) and then `eval:check`, so a broken fixture
+  or a drifted harness fails a pull request with no model and no secret.
 - `.github/workflows/eval-model.yml`: `workflow_dispatch` for the measured half — the same
   `--check` against a real model, failing the workflow on a regression and uploading the
   JSON either way.
@@ -35,14 +51,26 @@
   right commit padded the seven characters it had, and every padded answer counted as a
   failure. The prompt now asks for the sha "exactly as the history printed it"; the grader
   still treats a padded sha as a fabrication (`tests/eval-grade.test.ts`), because an
-  invented identifier is not a citation. With the fix the typed arm scores 90/90 over three
+  invented identifier is not a citation. With the fix the typed arm scores 108/108 over three
   runs instead of 87%.
 
 ### Changed
 
-- The measured table is re-recorded: thirty fixtures, three runs per arm, both arms 90/90,
-  and the typed arm at 12,893 mean tokens against 5,851 for one raw `git` tool. The earlier
-  87% figure was an artifact of the prompt above, not a property of the tool surface.
+- `gh_ci_failures` keeps the lines around the **first error** instead of the last forty.
+  The end of a job log is teardown and "process completed with exit code 1" — the part a
+  model can already infer — while the assertion that explains the run sits hundreds of
+  lines higher. The window keeps five lines of run-up and spends the rest on the trace; a
+  log with no marker still degrades to exactly the old tail (`errorWindow` in
+  `src/text.ts`, `tests/text.test.ts`).
+- The GitHub User-Agent reports the version from `package.json` (`src/version.ts`) instead
+  of a literal that had frozen at 0.1.0 in one caller and 0.2.0 in two others.
+- The measured eval numbers are re-run on the thirty-six fixtures: **108/108** on both arms,
+  4.73 turns and 13,883 tokens per case for the typed arm against 4.31 and **6,540** for one
+  raw git tool. The published table is a cost result, not a correctness one, and it says so.
+- The byte table is re-measured on a fresh failed run: `gh_ci_failures` returns 12,218 B of
+  a 405,577 B log (97.0% saved) instead of a tail of it, because the window now spends its
+  lines around the first error. The CI call is slower than the naive download (15.9 s vs
+  4.7 s) and still says so in `bench/README.md`.
 
 
 ## 0.3.0 - 2026-11-11

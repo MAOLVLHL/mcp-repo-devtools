@@ -20,7 +20,7 @@ byte budget on every answer. Works with **Claude Code**, **Cursor**, **Codex**,
 **Copilot** and any other MCP host.
 
 - **Bounded, and measured.** On a real failed CI run, reading the logs it needed cost
-  **322,887 bytes raw; the tool returned 13,915** (95.7% less). Issue search over a
+  **405,577 bytes raw; the tool returned 12,218** (97.0% less). Issue search over a
   busy repository: **176,170 → 4,371** (97.5%). Twenty commits with `git log -p`:
   **19,300 → 992** (94.9%). The numbers, the fixtures and the caveats are in
   [`bench/README.md`](bench/README.md); the script that produced them is
@@ -124,7 +124,7 @@ and point the client at `/absolute/path/to/mcp-repo-devtools/dist/index.js`.
 | `git_log` | the newest commits, one line each, optionally scoped to a path | No patches — that is the point |
 | `git_diff` | `--stat` by default, unified patch on request | `base` accepts a rev, tag or sha |
 | `gh_issue_search` | issues in one repo, newest activity first, body excerpt | Pull requests are filtered out |
-| `gh_ci_failures` | only failing checks, failed step names, optional log tail | `include_logs: true` for the last 40 lines |
+| `gh_ci_failures` | only failing checks, failed step names, optional log | `include_logs: true` for 40 lines around the first error |
 | `gh_pr_context` | title, body, size, files, review states, review comments | Replaces four REST calls |
 | `gh_pr_create` | opens a PR from a branch already pushed | write mode only |
 | `gh_issue_create` | files an issue | write mode only |
@@ -157,7 +157,8 @@ Five rules that keep a call cheap, learned from the eval rather than guessed:
    `path=`, `base=` or a smaller `log_lines`. Re-running the same call wider spends the
    same budget again.
 3. `gh_ci_failures` without `include_logs` is one round trip. Ask for the log only after
-   the failing job is known, and ask for 40 lines, not the archive.
+   the failing job is known, and ask for 40 lines, not the archive — the 40 lines come
+   from around the first error, because the last 40 are teardown.
 4. `gh_pr_context` replaces four REST calls. If you are about to fetch a PR, then its
    files, then its reviews separately, call this instead.
 5. A write returns `isError: true` when a human declined it. Read the note and change the
@@ -229,7 +230,7 @@ Windows 11, Node 22.14, git 2.56; tokens are bytes / 4.
 
 | Case | Naive | Tool | Saved |
 | --- | ---: | ---: | ---: |
-| `gh_ci_failures` — 3 failed jobs, real run | 322,887 B | 13,915 B | **95.7%** |
+| `gh_ci_failures` — 3 failed jobs, real run | 405,577 B | 12,218 B | **97.0%** |
 | `gh_issue_search` — 30 raw results vs 10 formatted | 176,170 B | 4,371 B | **97.5%** |
 | `git_log` — 20 commits, `git log -p` | 19,300 B | 992 B | **94.9%** |
 | `git_diff` — 400 dirty files, patch vs stat | 75,960 B | 5,236 B | **93.1%** |
@@ -238,7 +239,7 @@ Windows 11, Node 22.14, git 2.56; tokens are bytes / 4.
 
 Caveats, stated rather than buried: n = 1 per cell; the git rows use generated fixtures
 so they reproduce anywhere, the GitHub rows hit a live public repository; and
-`gh_ci_failures` is *slower* than the naive path (10.4 s vs 5.1 s) because it resolves
+`gh_ci_failures` is *slower* than the naive path (15.9 s vs 4.7 s) because it resolves
 ref → commit → checks → jobs → logs before it decides what to download. Bytes and
 latency trade against each other, and the table only measures one side. Full method:
 [`bench/README.md`](bench/README.md).
@@ -249,39 +250,48 @@ Most tool READMEs quote a benchmark their tool wins. This one runs mine against 
 alternative, and **the boring alternative wins on cost** — same score, half the tokens. That
 is the point.
 
-[`eval/`](eval/) measures answers, not bytes: thirty offline fixtures, each a real repository
+[`eval/`](eval/) measures answers, not bytes: thirty-six offline fixtures, each a real repository
 baked from a few commits with one regression in it, the failing test as a user would report
 it, and the sha that introduced it. Both arms run the same loop, the same prompt and the
 same 8-turn cap; the only variable is the tool surface — the six MCP tools, or one raw
 `git` tool that returns its output verbatim.
 
 ```bash
-npm run eval             # scripted oracle, offline, must be 30/30
-npm run eval:baseline    # the same cases through the raw git tool
+npm run eval             # scripted oracle, offline, must be 36/36
+npm run eval:baseline    # the raw git tool over the thirty git cases, 30/30
 npm run eval:check       # the run above, per fixture, against eval/baseline.json
+npm run eval -- --kind github                        # the six that need a CI log
 OPENAI_API_KEY=… npm run eval -- --provider openai   # a real model, real numbers
 ```
 
 Scored from the trajectory, not a second opinion: success@1 (does the report name the
 culprit commit), turns, tool calls, duplicate calls, tokens, and read-only violations. No
 judge model, so the number cannot drift with the grader. The scripted oracle run must stay
-30/30 — it proves fixtures, tool names and grader agree before a token is spent.
+36/36 — it proves fixtures, tool names and grader agree before a token is spent. Six of the
+thirty-six are `kind: "github"`: a real repository plus a stubbed workflow run, so a
+regression whose only evidence is a CI log is scored through `gh_ci_failures`.
 
-Three runs per arm, 2026-11-11, `deepseek-flash` at temperature 0, turn cap 8, thirty
-fixtures — 90 cases per arm:
+Three runs per arm, 2026-11-11, `deepseek-flash` at temperature 0, turn cap 8, thirty-six
+fixtures — 108 cases per arm:
 
 | | six MCP tools | one raw `git` tool |
 | --- | --- | --- |
-| success@1 | 90/90 (100%) | 90/90 (100%) |
-| mean turns | 4.59 | 4.08 |
-| mean tool calls | 6.72 | 6.71 |
-| mean tokens per case | 12,893 | **5,851** |
+| success@1 | 108/108 (100%) | 108/108 (100%) |
+| mean turns | 4.73 | 4.31 |
+| mean tool calls | 7.06 | 7.18 |
+| mean tokens per case | 13,883 | **6,540** |
+| — on the six CI cases | 14,905 | **8,247** |
 
 On "which commit introduced this regression" both arms name the right commit every time, and
-one raw command does it for 2.2× fewer tokens. The six schemas cost about 1,073 tokens on
+one raw command does it for 2.1× fewer tokens. The six schemas cost about 1,073 tokens on
 every turn before a single result is read; the raw arm pays that once for one tool. And this
 is the task `git` was built for — `log -p` and `show` are one call each — so a typed surface
 has to earn its overhead somewhere else.
+
+The six CI cases are the sharpest version of that. They were built on the theory that a
+symptom living only in a CI log would need `gh_ci_failures`; the raw arm solved all eighteen
+runs from the history anyway, and paid 8.2k tokens against the typed arm's 14.9k — because a
+404 KB log is an expensive way to learn a sha that `git log -p` hands over in one call.
 
 An eval you are willing to lose is the only kind worth quoting, and this one has already
 paid for itself five times:
@@ -297,10 +307,13 @@ paid for itself five times:
   stopped mid-thought looked wrong when the harness was wrong;
 - it put a number on the **schema tax**, which decides whether a seventh tool is worth its
   tokens;
-- it says where the server *should* win and the baseline cannot follow: `gh_ci_failures`,
-  `gh_pr_context` and `gh_issue_search` reach GitHub state that a git-only tool cannot.
+- it **falsified its own hypothesis**, twice. Six fixtures were built to need a CI log, on
+  the theory that one git tool could never answer them: on three runs a model holding only
+  git solved all eighteen, at 8.2k tokens against 14.9k. That result is published rather
+  than tuned away — the CI kind stays because it is the only end-to-end cover for
+  `gh_ci_failures`, not because it separates the arms.
 
-Method, the thirty regressions, the per-fixture table and the caveats:
+Method, the thirty-six regressions, the per-fixture table and the caveats:
 [`docs/eval.md`](docs/eval.md).
 
 ## Safety model
@@ -341,20 +354,21 @@ model, including what these controls do **not** cover, is in
 ```bash
 npm install
 npm run build        # tsc -> dist/
-npm test             # build + node:test, 135 tests
+npm test             # build + node:test, 150 tests
 npm run snapshot     # rewrite tests/fixtures/tool-surface.json after a surface change
 npm run bench        # the measurement above (needs a checkout, and a token for GitHub rows)
 npm run inspect      # MCP Inspector against the built server
 npm run demo:agent   # the reference loop, offline, no key
-npm run eval         # the thirty fixtures through the oracle, offline
+npm run eval         # the thirty-six fixtures through the oracle, offline
 npm run eval:check   # the gate: no fixture the recorded baseline solved got worse
+npm run eval -- --kind github   # only the six that need a CI log
 ```
 
 The tool surface is a contract: `tests/contract.test.ts` fails if a tool appears,
 disappears, or changes its arguments without the snapshot being updated on purpose.
 
 If you are a coding agent working *in* this repository rather than installing it, read
-[`AGENTS.md`](AGENTS.md): the commands, the six rules a change must not break, and where
+[`AGENTS.md`](AGENTS.md): the commands, the eight rules a change must not break, and where
 each layer lives.
 
 ```text
@@ -362,7 +376,8 @@ src/config.ts   MCP_ALLOWED_ROOTS parsing and realpath containment
 src/git.ts      execFile wrapper, allowlists, status/log/diff
 src/github.ts   REST reads, CI log download, opt-in writes
 src/zip.ts      minimal zip reader for Actions log archives
-src/text.ts     output budget, log tail, credential redaction
+src/text.ts     output budget, error window, credential redaction
+src/version.ts  the version, read from package.json, and the User-Agent GitHub sees
 src/server.ts   tool registration and text formatting
 src/agent/      reference loop: provider, toolbox, loop, diagnose task, CLI
 src/eval/       task-level eval: fixtures, grading, two arms, CLI
@@ -375,9 +390,9 @@ Docs: [architecture](docs/architecture.md) · [tool reference](docs/tools.md) ·
 
 ## Roadmap
 
-- `gh_ci_failures`: cut around the first error marker instead of keeping a fixed tail
 - `gh_issue_search`: ETag caching between calls
 - `git_blame` / `git_show`: already allowed at the transport layer, not exposed yet
+- eval: PR-shaped fixtures, so `gh_pr_context` is scored the way `gh_ci_failures` now is
 - HTTP transport: out of scope until there is an auth design worth shipping
 
 ## Contributing

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-11T11:14:50.144Z",
+  "generatedAt": "2026-11-11T15:57:39.728Z",
   "platform": "win32 x64",
   "node": "v22.14.0",
   "git": "git version 2.56.0.windows.4",
@@ -13,8 +13,8 @@
       "naiveBytes": 19300,
       "toolBytes": 992,
       "saved": 0.949,
-      "naiveMs": 48,
-      "toolMs": 46
+      "naiveMs": 49,
+      "toolMs": 53
     },
     {
       "name": "git_diff",
@@ -22,7 +22,7 @@
       "naiveBytes": 3641,
       "toolBytes": 290,
       "saved": 0.92,
-      "naiveMs": 38,
+      "naiveMs": 40,
       "toolMs": 41
     },
     {
@@ -31,17 +31,17 @@
       "naiveBytes": 176170,
       "toolBytes": 4371,
       "saved": 0.975,
-      "naiveMs": 1525,
-      "toolMs": 1200
+      "naiveMs": 1774,
+      "toolMs": 1293
     },
     {
       "name": "gh_ci_failures",
-      "note": "HKUDS/nanobot run 42998518695, 3 failed job(s)",
-      "naiveBytes": 322887,
-      "toolBytes": 13915,
-      "saved": 0.957,
-      "naiveMs": 5149,
-      "toolMs": 10378
+      "note": "HKUDS/nanobot run 43035626612, 3 failed job(s)",
+      "naiveBytes": 405577,
+      "toolBytes": 12218,
+      "saved": 0.97,
+      "naiveMs": 4735,
+      "toolMs": 15860
     },
     {
       "name": "git_status",
@@ -49,8 +49,8 @@
       "naiveBytes": 8320,
       "toolBytes": 5621,
       "saved": 0.324,
-      "naiveMs": 85,
-      "toolMs": 88
+      "naiveMs": 166,
+      "toolMs": 90
     },
     {
       "name": "git_diff",
@@ -58,8 +58,8 @@
       "naiveBytes": 75960,
       "toolBytes": 5236,
       "saved": 0.931,
-      "naiveMs": 205,
-      "toolMs": 221
+      "naiveMs": 168,
+      "toolMs": 169
     },
     {
       "name": "git_diff",
@@ -67,8 +67,8 @@
       "naiveBytes": 75960,
       "toolBytes": 5491,
       "saved": 0.928,
-      "naiveMs": 205,
-      "toolMs": 212
+      "naiveMs": 168,
+      "toolMs": 179
     }
   ],
   "probes": [

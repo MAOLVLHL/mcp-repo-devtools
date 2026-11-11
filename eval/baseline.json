@@ -6,6 +6,12 @@
   "fixtures": {
     "async-cache-races-on-miss": "pass",
     "cache-key-drops-the-tenant": "pass",
+    "ci-log-a-date-formatted-for-one-locale": "pass",
+    "ci-log-a-missing-user-stops-rejecting": "pass",
+    "ci-log-backoff-multiplied-in-milliseconds": "pass",
+    "ci-log-pagination-never-leaves-the-first-page": "pass",
+    "ci-log-tenancy-lost-in-the-cache-key": "pass",
+    "ci-log-totals-rounded-to-one-decimal": "pass",
     "clamp-arguments-swapped": "pass",
     "config-read-at-import-time": "pass",
     "csv-export-quotes-nothing": "pass",
@@ -36,8 +42,8 @@
     "unicode-nfc-compare-dropped": "pass"
   },
   "summary": {
-    "cases": 30,
-    "passed": 30,
+    "cases": 36,
+    "passed": 36,
     "successRate": 1
   }
 }

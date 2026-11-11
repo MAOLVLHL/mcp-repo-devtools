@@ -6,13 +6,18 @@ This directory is the second question.
 
 ## What a case is
 
-Thirty fixtures in [`fixtures/`](fixtures/), each a JSON file with three things:
+Thirty-six fixtures in [`fixtures/`](fixtures/), each a JSON file with three things:
 
 - `commits` — the repository, baked commit by commit with fixed dates, so every build
   produces the same shas;
 - `symptom` — the failing test, phrased the way a user would paste it into a chat;
 - `expected_commit` — the 1-based index of the commit that actually introduced the
   regression.
+
+Thirty of them are `kind: "git"`: the history in the checkout is the evidence. Six are
+`kind: "github"` and carry a fourth key, `github`, holding a workflow run, its failing
+jobs and the failing job's log — because some regressions are only explained by a CI log,
+and a tool surface that cannot read one can only guess.
 
 Every fixture carries a real, runnable test suite: the repository is green at the culprit's
 parent and red at HEAD. That property is checked, not assumed — a fixture whose test never
@@ -22,7 +27,7 @@ until a model refused to answer it (see below).
 Nothing touches the network. A case builds in milliseconds, which is what makes it cheap
 enough to run on every commit.
 
-### The thirty regressions
+### The thirty git regressions
 
 | Fixture | What the culprit broke |
 | --- | --- |
@@ -60,12 +65,51 @@ enough to run on every commit.
 Python fixtures run under `pytest`, JavaScript fixtures under `node --test`; the language
 is a property of the repository, not of the grader.
 
+### The six CI regressions
+
+| Fixture | What the culprit broke |
+| --- | --- |
+| `ci-log-tenancy-lost-in-the-cache-key` | a "simplify" removed the tenant from the cache key, so two tenants now share entries |
+| `ci-log-pagination-never-leaves-the-first-page` | the stop condition changed from "no cursor" to "empty page", so the pager loops to its own guard |
+| `ci-log-totals-rounded-to-one-decimal` | invoice totals rounded to one decimal, so `10.01` prints as `10.00` |
+| `ci-log-backoff-multiplied-in-milliseconds` | a multiplier added where the unit was already milliseconds, so the first retry waits 100 s |
+| `ci-log-a-missing-user-stops-rejecting` | a missing user returned as `null` instead of rejecting, so the caller renders a blank profile |
+| `ci-log-a-date-formatted-for-one-locale` | an ISO day replaced by `toLocaleDateString`, so the date depends on the runner's locale |
+
+None of these is answerable from the checkout alone: the commits are ordinary-looking
+refactors and the failing assertion is in the log. That is the difference between the two
+kinds: the `github` kind exists so the CI path is exercised end to end, not so that the
+typed arm has somewhere to win — the measurement below says it does not have one.
+
+A `github` fixture is still a real repository with a real test suite: green at the
+culprit's parent, red at HEAD, exactly like the git ones. Only the *evidence the model is
+given* differs.
+
 ## The two arms
 
 | Arm | Tool surface | What it represents |
 | --- | --- | --- |
 | `mcp` | the six read tools, over an in-memory transport | this server |
 | `baseline` | one `git` tool that runs a command and returns the output verbatim | the good version of "just use a shell" |
+
+Both arms run all thirty-six fixtures when you ask for them. The raw arm is *scored* on
+the thirty git fixtures (`npm run eval:baseline` passes `--kind git`): its one tool speaks
+git, the evidence in a CI case is a workflow log on GitHub, and the scripted oracle has no
+path to it.
+
+### Where the CI kind does not separate the arms
+
+The design assumed the six `github` fixtures would be out of reach for a raw `git` tool.
+Measured, they are not: over three runs the raw arm scored **18/18** on them, at 8,247 tokens
+per case against the typed arm's 14,905. A fixture with two or three commits and a culprit
+message like "use the reader's date format" can be found by reading diffs, without opening
+the log at all — and opening a 404 KB log costs more than the diffs it competes with.
+
+So nothing is waived. No miss is *expected* on either arm, and `--arm baseline --kind all`
+exits 1 — truthfully, because the scripted raw arm cannot answer those six. CI runs the
+raw arm on the git kind. The CI kind stays in the suite for two reasons: it is the only
+end-to-end cover for `gh_ci_failures`, and a fixture that fails to separate the arms is
+a result worth publishing, not a fixture worth deleting.
 
 Both arms use the same loop, the same system prompt, the same task, and the same 8-turn
 cap. The only variable is the tool surface, which is the point: a difference in tokens or
@@ -107,16 +151,17 @@ one, which is the same rule the server applies to a claim it cannot verify.
 ```bash
 npm run build
 
-npm run eval                      # scripted oracle: must be 30/30
-npm run eval:baseline             # the same cases through the raw git tool
+npm run eval                      # scripted oracle: must be 36/36
+npm run eval:baseline             # the raw git tool, the thirty git cases (30/30)
 npm run eval:check                # that run, compared against eval/baseline.json
+npm run eval -- --kind github     # only the six CI cases
 OPENAI_API_KEY=… npm run eval -- --provider openai
 OPENAI_API_KEY=… OPENAI_MODEL=gpt-4o-mini npm run eval -- --provider openai --json
 ```
 
 The scripted provider is an oracle: it replays `git log`, the one diff that matters, and
 a report that cites the expected sha. It proves the fixtures, the tool names, the loop
-and the grader agree — if the harness scores 29/30, the harness is broken, not the model.
+and the grader agree — if the harness scores 35/36, the harness is broken, not the model.
 That is the run CI enforces.
 
 The `openai` provider is a real model behind any OpenAI-compatible endpoint. Its numbers
@@ -128,24 +173,26 @@ printed as `ERROR` and the suite keeps going, because one bad response should no
 away twenty-nine good ones. The CLI then exits 1 and lists the cases that did not finish,
 so a half-run can never be mistaken for a low score.
 
-## A real model, on the thirty fixtures
+## A real model, on the thirty-six fixtures
 
-Three runs per arm, 2026-11-11, `deepseek-flash` at temperature 0, turn cap 8 — 90 cases per
+Three runs per arm, 2026-11-11, `deepseek-flash` at temperature 0, turn cap 8 — 108 cases per
 arm:
 
 | | six MCP tools | one raw `git` tool |
 | --- | --- | --- |
-| success@1 | 90/90 (100%) | 90/90 (100%) |
-| mean turns | 4.59 | 4.08 |
-| mean tool calls | 6.72 | 6.71 |
-| mean tokens per case | 12,893 | **5,851** |
+| success@1 | 108/108 (100%) | 108/108 (100%) |
+| mean turns | 4.73 | 4.31 |
+| mean tool calls | 7.06 | 7.18 |
+| mean tokens per case | 13,883 | **6,540** |
 | duplicate calls | 0% | 0.3% |
 | read-only violations | 0 | 0 |
 
-Both arms solve every case, so on this task the typed surface buys correctness it already
-had and costs 2.2× the tokens. The gap is mostly the schema tax: six tool schemas are about
-4,290 bytes, roughly 1,073 tokens on every turn before a result is read, and the raw arm
-pays it once for a single tool.
+Split by evidence, the two arms land where the design said they would not: on the thirty git
+cases 13,679 vs 6,198 tokens per case, and on the six CI cases 14,905 vs **8,247**. Both arms
+solve every case, so on this task the typed surface buys correctness it already had and costs
+2.1× the tokens. The gap is mostly the schema tax: six tool schemas are about 4,290 bytes,
+roughly 1,073 tokens on every turn before a result is read, and the raw arm pays it once for
+a single tool.
 
 ### The first number was wrong, and that is the finding
 
@@ -224,10 +271,11 @@ fixture or a drifted harness fails a pull request without a model or a secret.
   hand-wavy explanation scores the same as a correct sha with a good one.
 - **Multi-file archaeology.** Every fixture is small enough that one diff explains the
   failure. Real incidents are not.
-- **The GitHub tools.** Every fixture is a local git repository, so `gh_ci_failures`,
-  `gh_pr_context` and `gh_issue_search` — the tools the baseline cannot reach — are never
-  scored. A tool surface that only pays off on the GitHub side would score exactly like the
-  tables above.
+- **GitHub beyond CI logs.** Six fixtures now need `gh_ci_failures`, but `gh_pr_context`
+  and `gh_issue_search` are still unscored: no fixture puts its evidence in a pull request
+  or an issue. The GitHub side of the surface is measured, not exhausted.
+- **Writing.** Both arms are read-only, so nothing here scores a tool that changes
+  something.
 
 ## Adding a fixture
 
@@ -237,7 +285,13 @@ fixture or a drifted harness fails a pull request without a model or a secret.
 3. Put the failing test's message in `symptom`, including the assertion text when it
    helps.
 4. Set `expected_commit` to that commit's 1-based position.
-5. Run `npm run eval`; the oracle must stay 30/30 (or 31/31).
+5. Run `npm run eval`; the oracle must stay green (36/36, or 37/37).
 6. Add a line to the table above saying what the regression is.
 7. Re-record `eval/baseline.json`, or `eval:check` will (correctly) fail on the new
    fixture as unmeasured.
+
+For a `github` fixture there are two more rules. Add `kind: "github"` and a `github` block
+with `repo`, `ref`, `run`, `sha`, `jobs` and `log`; the log must contain the line the model
+is expected to quote, because that is the only evidence the fixture offers. Then check the
+baseline arm still scores it as a miss — if a git command can answer it, the fixture is a
+`git` fixture wearing a CI log.
