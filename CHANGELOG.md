@@ -89,6 +89,9 @@
   which `test_total` never calls; a real model pointed that out in every run, and was
   right. The oracle could not catch it, because the oracle cites `expected_commit` by
   construction.
+- `--help` now describes the surface the same way the package metadata does, and prints the
+  whole environment contract rather than the three variables it printed before: the write gate,
+  the confirmation mode and the sampling switch are all listed where a person looks first.
 - The package now describes itself from the agent's side: the README opens with the
   agent contract (annotations, structured content, progress, cancellation, the write gate,
   the prompts, the loop and the eval) and with the rules an agent should follow when it
