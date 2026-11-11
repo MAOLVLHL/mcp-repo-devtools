@@ -6,7 +6,7 @@ This directory is the second question.
 
 ## What a case is
 
-Thirty-six fixtures in [`fixtures/`](fixtures/), each a JSON file with three things:
+Forty fixtures in [`fixtures/`](fixtures/), each a JSON file with three things:
 
 - `commits` — the repository, baked commit by commit with fixed dates, so every build
   produces the same shas;
@@ -14,10 +14,18 @@ Thirty-six fixtures in [`fixtures/`](fixtures/), each a JSON file with three thi
 - `expected_commit` — the 1-based index of the commit that actually introduced the
   regression.
 
-Thirty of them are `kind: "git"`: the history in the checkout is the evidence. Six are
+Thirty of them are `kind: "git"`: the history in the checkout is the evidence. Ten are
 `kind: "github"` and carry a fourth key, `github`, holding a workflow run, its failing
 jobs and the failing job's log — because some regressions are only explained by a CI log,
 and a tool surface that cannot read one can only guess.
+
+Four of the ten are also `shallow: true`: the checkout is baked as a depth-1 clone of the
+commit the run tested — one commit, no parent, which is the shape `actions/checkout` with
+`fetch-depth: 1` leaves behind. The commit that broke the test came earlier and was never
+fetched, so its sha is reachable in exactly one place: the job log, where a diagnostic step
+ran `git blame` over the changed lines and `git show --stat` over the commit. That is the
+one case in this suite where a raw `git` tool cannot be right, not because it is crippled
+but because the evidence it would need was deleted by the clone.
 
 Every fixture carries a real, runnable test suite: the repository is green at the culprit's
 parent and red at HEAD. That property is checked, not assumed — a fixture whose test never
@@ -65,7 +73,7 @@ enough to run on every commit.
 Python fixtures run under `pytest`, JavaScript fixtures under `node --test`; the language
 is a property of the repository, not of the grader.
 
-### The six CI regressions
+### The ten CI regressions
 
 | Fixture | What the culprit broke |
 | --- | --- |
@@ -76,10 +84,25 @@ is a property of the repository, not of the grader.
 | `ci-log-a-missing-user-stops-rejecting` | a missing user returned as `null` instead of rejecting, so the caller renders a blank profile |
 | `ci-log-a-date-formatted-for-one-locale` | an ISO day replaced by `toLocaleDateString`, so the date depends on the runner's locale |
 
-None of these is answerable from the checkout alone: the commits are ordinary-looking
-refactors and the failing assertion is in the log. That is the difference between the two
-kinds: the `github` kind exists so the CI path is exercised end to end, not so that the
-typed arm has somewhere to win — the measurement below says it does not have one.
+### The four shallow ones
+
+| Fixture | What the culprit broke | Where the log names it |
+| --- | --- | --- |
+| `shallow-ci-midnight-rolls-back-a-day` | `astimezone(tz)` dropped, so a UTC evening lands on the previous local day | blame on the dropped call, `refactor: simplify the day calculation` |
+| `shallow-ci-rounds-each-line-first` | each line rounded before summing, so a long invoice loses pennies | blame on the per-line `round`, `refactor: round each line as it is added` |
+| `shallow-ci-port-parser-accepts-junk` | `Number` replaced by `parseInt`, so `8080abc` is a port | blame on the parser line, `refactor: use parseInt for the port` |
+| `shallow-ci-slug-keeps-punctuation` | the slug regex narrowed to whitespace, so `Hello, World!` keeps its comma | blame on the regex, `refactor: replace runs of whitespace only` |
+
+All four are still real repositories with real test suites: green at the culprit's parent,
+red at HEAD, checked the same way as every other fixture. What is missing is the history the
+green state came from — which is exactly what a `git clone --depth 1` in a CI job gives you.
+The run itself tested a later commit (a docs-only change in each of the four), so the one
+commit the clone holds is *not* the answer; the blame and `show --stat` lines are.
+
+None of the ten is answerable from the checkout alone: the commits are ordinary-looking
+refactors and the failing assertion is in the log. Six of them can still be *guessed* from
+the diffs, because the culprit commit is in the history; the four shallow ones cannot, and
+the measurement below changes because of it.
 
 A `github` fixture is still a real repository with a real test suite: green at the
 culprit's parent, red at HEAD, exactly like the git ones. Only the *evidence the model is
@@ -92,24 +115,46 @@ given* differs.
 | `mcp` | the six read tools, over an in-memory transport | this server |
 | `baseline` | one `git` tool that runs a command and returns the output verbatim | the good version of "just use a shell" |
 
-Both arms run all thirty-six fixtures when you ask for them. The raw arm is *scored* on
+Both arms run all forty fixtures when you ask for them. The raw arm is *scored* on
 the thirty git fixtures (`npm run eval:baseline` passes `--kind git`): its one tool speaks
 git, the evidence in a CI case is a workflow log on GitHub, and the scripted oracle has no
 path to it.
 
-### Where the CI kind does not separate the arms
+### Where the CI kind separates the arms, and where it does not
 
-The design assumed the six `github` fixtures would be out of reach for a raw `git` tool.
-Measured, they are not: over three runs the raw arm scored **18/18** on them, at 8,247 tokens
-per case against the typed arm's 14,905. A fixture with two or three commits and a culprit
-message like "use the reader's date format" can be found by reading diffs, without opening
-the log at all — and opening a 404 KB log costs more than the diffs it competes with.
+The first six `github` fixtures were built to exercise `gh_ci_failures` end to end, not to
+be unanswerable: their culprit commit is still in the history, so a raw `git` tool can find
+it by reading diffs. Measured over three runs on the forty-fixture suite, the raw arm scored
+**18/18** on those six, at 8,076 tokens per case against the typed arm's 16,964 — opening a
+404 KB log costs more than the diffs it competes with.
 
-So nothing is waived. No miss is *expected* on either arm, and `--arm baseline --kind all`
-exits 1 — truthfully, because the scripted raw arm cannot answer those six. CI runs the
-raw arm on the git kind. The CI kind stays in the suite for two reasons: it is the only
-end-to-end cover for `gh_ci_failures`, and a fixture that fails to separate the arms is
-a result worth publishing, not a fixture worth deleting.
+The four shallow fixtures were built to close that hole structurally rather than rhetorically.
+There is no diff to read: the checkout holds one commit, the run tested a later, docs-only
+commit, and the sha that broke the build is in the log's blame and `show --stat` lines or
+nowhere. A raw `git` tool can only name the one commit it can see, which is the wrong sha,
+or decline — and the scripted raw arm declines, which is why `--arm baseline --kind all`
+exits 1 and CI scores the raw arm on the git kind. This is the first place in the suite where
+the typed surface wins on *correctness* rather than on presentation, and the reason is not
+that the baseline is crippled: it is that the evidence it needs was deleted by the clone.
+
+The first version of the four got this wrong, and the measurement caught it. It made the run's
+`head_sha` *equal* to the culprit's sha, with the clone keeping that same commit — coherent,
+but it meant the one commit a raw `git` tool could see was already the answer. Measured, the
+raw arm scored **10/10** on the ten CI fixtures by citing it, at 6,671 tokens per case: the
+four graded nothing. The fix was to move the culprit one commit back and have the log carry
+the blame, which is also what a real incident looks like — the run is green-then-red on a
+commit whose own diff is innocent.
+
+A model can still decline to cite a sha it cannot verify locally. That is a legitimate
+reading of the evidence and it is scored as a miss, not waived. The first probe on the
+blame version of the fixtures still showed a model declining, because the two shas in the
+log disagreed with the one in its clone; the log now says which commit the run checked out
+and which commit it blames, and over three runs the typed arm answered all twelve shallow
+cases while the raw arm answered none.
+
+Nothing is waived either way. No miss is *expected* on any arm; a shallow fixture that the
+raw arm solved would be a bug in the fixture, because the sha it would have to cite does not
+exist anywhere in its input.
 
 Both arms use the same loop, the same system prompt, the same task, and the same 8-turn
 cap. The only variable is the tool surface, which is the point: a difference in tokens or
@@ -151,17 +196,17 @@ one, which is the same rule the server applies to a claim it cannot verify.
 ```bash
 npm run build
 
-npm run eval                      # scripted oracle: must be 36/36
+npm run eval                      # scripted oracle: must be 40/40
 npm run eval:baseline             # the raw git tool, the thirty git cases (30/30)
 npm run eval:check                # that run, compared against eval/baseline.json
-npm run eval -- --kind github     # only the six CI cases
+npm run eval -- --kind github     # only the ten CI cases
 OPENAI_API_KEY=… npm run eval -- --provider openai
 OPENAI_API_KEY=… OPENAI_MODEL=gpt-4o-mini npm run eval -- --provider openai --json
 ```
 
 The scripted provider is an oracle: it replays `git log`, the one diff that matters, and
 a report that cites the expected sha. It proves the fixtures, the tool names, the loop
-and the grader agree — if the harness scores 35/36, the harness is broken, not the model.
+and the grader agree — if the harness scores 39/40, the harness is broken, not the model.
 That is the run CI enforces.
 
 The `openai` provider is a real model behind any OpenAI-compatible endpoint. Its numbers
@@ -170,29 +215,43 @@ and the turn cap.
 
 A case that raises — a dead endpoint, a rejected key, a provider that answers 502 — is
 printed as `ERROR` and the suite keeps going, because one bad response should not throw
-away twenty-nine good ones. The CLI then exits 1 and lists the cases that did not finish,
+away thirty-nine good ones. The CLI then exits 1 and lists the cases that did not finish,
 so a half-run can never be mistaken for a low score.
 
-## A real model, on the thirty-six fixtures
+## A real model, on the forty fixtures
 
-Three runs per arm, 2026-11-11, `deepseek-flash` at temperature 0, turn cap 8 — 108 cases per
+Three runs per arm, 2026-11-11, `deepseek-flash` at temperature 0, turn cap 8 — 120 cases per
 arm:
 
 | | six MCP tools | one raw `git` tool |
 | --- | --- | --- |
-| success@1 | 108/108 (100%) | 108/108 (100%) |
-| mean turns | 4.73 | 4.31 |
-| mean tool calls | 7.06 | 7.18 |
-| mean tokens per case | 13,883 | **6,540** |
-| duplicate calls | 0% | 0.3% |
+| success@1 | **120/120 (100%)** | 108/120 (90%) |
+| mean turns | 4.68 | 4.72 |
+| mean tool calls | 6.97 | 9.18 |
+| mean tokens per case | 13,898 | **8,534** |
+| duplicate calls | 0% | 0.5% |
 | read-only violations | 0 | 0 |
 
-Split by evidence, the two arms land where the design said they would not: on the thirty git
-cases 13,679 vs 6,198 tokens per case, and on the six CI cases 14,905 vs **8,247**. Both arms
-solve every case, so on this task the typed surface buys correctness it already had and costs
-2.1× the tokens. The gap is mostly the schema tax: six tool schemas are about 4,290 bytes,
-roughly 1,073 tokens on every turn before a result is read, and the raw arm pays it once for
-a single tool.
+Split by evidence, the arms trade the two things the suite measures:
+
+| Evidence | six MCP tools | one raw `git` tool |
+| --- | --- | --- |
+| thirty git fixtures | 90/90, 13,567 tokens | 90/90, **6,548 tokens** |
+| six CI-log fixtures | 18/18, 16,964 tokens | 18/18, **8,076 tokens** |
+| four shallow fixtures | **12/12, 11,779 tokens** | 0/12, 24,118 tokens |
+
+On a repository with its history intact the raw arm is right every time and costs 2.1× less:
+the six schemas are about 4,290 bytes, roughly 1,073 tokens on every turn before a result is
+read, and the raw arm pays that once for a single tool. On the depth-1 checkout it cannot be
+right, and it does not save money trying — it spends twice the typed arm's tokens and 24.8
+tool calls per case looking for a commit that was never fetched, then cites the one it can
+see or declines. That is the case the typed surface exists for, and it is worth stating
+precisely: the win is not that the tools are smarter, it is that `gh_ci_failures` reads the
+log the clone left behind.
+
+An overall score that hides this would be the wrong summary. Both numbers are above the
+split, because "which arm is better" has no single answer here: it depends on whether the
+evidence survived the clone.
 
 ### The first number was wrong, and that is the finding
 
@@ -263,7 +322,7 @@ fixture or a drifted harness fails a pull request without a model or a secret.
 
 ## What it does not measure
 
-- **General coding ability.** One narrow task, thirty-six fixtures. A model that aces this may
+- **General coding ability.** One narrow task, forty fixtures. A model that aces this may
   still be useless at everything else.
 - **Latency.** Turns and tokens are counted; wall-clock time is not, because the fixture
   build and the provider are both local.
@@ -271,7 +330,7 @@ fixture or a drifted harness fails a pull request without a model or a secret.
   hand-wavy explanation scores the same as a correct sha with a good one.
 - **Multi-file archaeology.** Every fixture is small enough that one diff explains the
   failure. Real incidents are not.
-- **GitHub beyond CI logs.** Six fixtures now need `gh_ci_failures`, but `gh_pr_context`
+- **GitHub beyond CI logs.** Ten fixtures now need `gh_ci_failures`, but `gh_pr_context`
   and `gh_issue_search` are still unscored: no fixture puts its evidence in a pull request
   or an issue. The GitHub side of the surface is measured, not exhausted.
 - **Writing.** Both arms are read-only, so nothing here scores a tool that changes
@@ -285,7 +344,7 @@ fixture or a drifted harness fails a pull request without a model or a secret.
 3. Put the failing test's message in `symptom`, including the assertion text when it
    helps.
 4. Set `expected_commit` to that commit's 1-based position.
-5. Run `npm run eval`; the oracle must stay green (36/36, or 37/37).
+5. Run `npm run eval`; the oracle must stay green (40/40, or 41/41).
 6. Add a line to the table above saying what the regression is.
 7. Re-record `eval/baseline.json`, or `eval:check` will (correctly) fail on the new
    fixture as unmeasured.

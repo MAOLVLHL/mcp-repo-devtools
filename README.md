@@ -247,51 +247,63 @@ latency trade against each other, and the table only measures one side. Full met
 ## An eval that can fail me
 
 Most tool READMEs quote a benchmark their tool wins. This one runs mine against the boring
-alternative, and **the boring alternative wins on cost** — same score, half the tokens. That
-is the point.
+alternative, and publishes both halves: **one raw `git` command is 2.1× cheaper on a repository
+with its history intact, and cannot answer at all when the checkout is a depth-1 clone and the
+only evidence is a CI log.** Which half matters depends on the incident, so neither half is
+tuned away.
 
-[`eval/`](eval/) measures answers, not bytes: thirty-six offline fixtures, each a real repository
+[`eval/`](eval/) measures answers, not bytes: forty offline fixtures, each a real repository
 baked from a few commits with one regression in it, the failing test as a user would report
 it, and the sha that introduced it. Both arms run the same loop, the same prompt and the
 same 8-turn cap; the only variable is the tool surface — the six MCP tools, or one raw
 `git` tool that returns its output verbatim.
 
 ```bash
-npm run eval             # scripted oracle, offline, must be 36/36
+npm run eval             # scripted oracle, offline, must be 40/40
 npm run eval:baseline    # the raw git tool over the thirty git cases, 30/30
 npm run eval:check       # the run above, per fixture, against eval/baseline.json
-npm run eval -- --kind github                        # the six that need a CI log
+npm run eval -- --kind github                        # the ten that need a CI log
 OPENAI_API_KEY=… npm run eval -- --provider openai   # a real model, real numbers
 ```
 
 Scored from the trajectory, not a second opinion: success@1 (does the report name the
 culprit commit), turns, tool calls, duplicate calls, tokens, and read-only violations. No
 judge model, so the number cannot drift with the grader. The scripted oracle run must stay
-36/36 — it proves fixtures, tool names and grader agree before a token is spent. Six of the
-thirty-six are `kind: "github"`: a real repository plus a stubbed workflow run, so a
-regression whose only evidence is a CI log is scored through `gh_ci_failures`.
+40/40 — it proves fixtures, tool names and grader agree before a token is spent. Ten of the
+forty are `kind: "github"`: a real repository plus a stubbed workflow run, so a regression
+whose only evidence is a CI log is scored through `gh_ci_failures`. Four of those ten are
+`shallow`: the checkout is a depth-1 clone of the commit the run tested, the culprit came
+earlier and was never fetched, and the job log's `git blame`/`show --stat` lines are the only
+surviving pointer to it.
 
-Three runs per arm, 2026-11-11, `deepseek-flash` at temperature 0, turn cap 8, thirty-six
-fixtures — 108 cases per arm:
+Three runs per arm, 2026-11-11, `deepseek-flash` at temperature 0, turn cap 8, forty
+fixtures — 120 cases per arm:
 
 | | six MCP tools | one raw `git` tool |
 | --- | --- | --- |
-| success@1 | 108/108 (100%) | 108/108 (100%) |
-| mean turns | 4.73 | 4.31 |
-| mean tool calls | 7.06 | 7.18 |
-| mean tokens per case | 13,883 | **6,540** |
-| — on the six CI cases | 14,905 | **8,247** |
+| success@1 | **120/120 (100%)** | 108/120 (90%) |
+| mean turns | 4.68 | 4.72 |
+| mean tool calls | 6.97 | 9.18 |
+| mean tokens per case | 13,898 | **8,534** |
+| — thirty git cases | 13,567 | **6,548** |
+| — six CI-log cases | 16,964 | **8,076** |
+| — four shallow cases | **11,779, 12/12** | 24,118, **0/12** |
 
-On "which commit introduced this regression" both arms name the right commit every time, and
-one raw command does it for 2.1× fewer tokens. The six schemas cost about 1,073 tokens on
-every turn before a single result is read; the raw arm pays that once for one tool. And this
-is the task `git` was built for — `log -p` and `show` are one call each — so a typed surface
-has to earn its overhead somewhere else.
+On a repository whose history is intact, both arms name the right commit every time and one
+raw command does it for 2.1× fewer tokens. The six schemas cost about 1,073 tokens on every
+turn before a single result is read; the raw arm pays that once for one tool. That is the task
+`git` was built for — `log -p` and `show` are one call each — so a typed surface has to earn
+its overhead somewhere else.
 
-The six CI cases are the sharpest version of that. They were built on the theory that a
-symptom living only in a CI log would need `gh_ci_failures`; the raw arm solved all eighteen
-runs from the history anyway, and paid 8.2k tokens against the typed arm's 14.9k — because a
-404 KB log is an expensive way to learn a sha that `git log -p` hands over in one call.
+The four shallow cases are where it does, and the first version of them did not. They were
+built to be answerable only from a CI log: the checkout is a depth-1 clone of the commit the
+workflow tested, the breaking commit came earlier and was never fetched, and the log's
+`git blame`/ `show --stat` lines are the only place its sha survives. The first attempt made
+that head sha the culprit's own sha, so the raw arm simply cited the only commit it could see
+and scored 10/10 — a fixture that graded nothing. Moving the culprit one commit back made the
+raw arm answer none of the twelve, at 24.1k tokens and 24.8 tool calls per case: it hunts for
+a commit that is not on disk. The typed arm answered all twelve, cheaper than it answers the
+git cases, because `gh_ci_failures` hands it the log that still names the change.
 
 An eval you are willing to lose is the only kind worth quoting, and this one has already
 paid for itself five times:
@@ -308,12 +320,14 @@ paid for itself five times:
 - it put a number on the **schema tax**, which decides whether a seventh tool is worth its
   tokens;
 - it **falsified its own hypothesis**, twice. Six fixtures were built to need a CI log, on
-  the theory that one git tool could never answer them: on three runs a model holding only
-  git solved all eighteen, at 8.2k tokens against 14.9k. That result is published rather
-  than tuned away — the CI kind stays because it is the only end-to-end cover for
-  `gh_ci_failures`, not because it separates the arms.
+  the theory that one git tool could never answer them: a model holding only git solved all
+  eighteen anyway, from the diffs, at 8.1k tokens against 17.0k. That result is published
+  rather than tuned away, and it is the reason the seventh fixture family deletes the history
+  instead of asking a leading question. The four shallow fixtures then failed their author a
+  second time — the first version let the raw arm score 10/10 — before the blame line closed
+  it.
 
-Method, the thirty-six regressions, the per-fixture table and the caveats:
+Method, the forty regressions, the per-fixture table and the caveats:
 [`docs/eval.md`](docs/eval.md).
 
 ## Safety model
@@ -359,9 +373,9 @@ npm run snapshot     # rewrite tests/fixtures/tool-surface.json after a surface 
 npm run bench        # the measurement above (needs a checkout, and a token for GitHub rows)
 npm run inspect      # MCP Inspector against the built server
 npm run demo:agent   # the reference loop, offline, no key
-npm run eval         # the thirty-six fixtures through the oracle, offline
+npm run eval         # the forty fixtures through the oracle, offline
 npm run eval:check   # the gate: no fixture the recorded baseline solved got worse
-npm run eval -- --kind github   # only the six that need a CI log
+npm run eval -- --kind github   # only the ten that need a CI log
 ```
 
 The tool surface is a contract: `tests/contract.test.ts` fails if a tool appears,

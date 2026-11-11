@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Four `shallow` CI fixtures, and the flag that bakes them: the checkout is a depth-1
+  clone of the commit the run tested, so the commit that broke the build came earlier, was
+  never fetched, and survives only in the job log's `git blame` and `show --stat` lines.
+  This is the first fixture family in which a raw `git` tool cannot be right, which is why
+  the eval can now show a case where the typed surface wins on correctness instead of on
+  prose. The first version of this family made the run's `head_sha` the culprit's own sha;
+  the raw arm then scored 10/10 by citing the only commit it could see, and the family was
+  rebuilt around the blame line.
+- `shallow: true` on a fixture, and the literal `"culprit"` for `github.sha`: the builder
+  resolves the sentinel to the sha of the commit the fixture blames, so a shallow fixture
+  never has to hard-code a sha it cannot know. A shallow fixture must be `kind: "github"`;
+  the parser says so rather than producing a case with no evidence in it.
+- `{{sha}}`, `{{sha7}}`, `{{culprit}}` and `{{culprit7}}` in a fixture log: the stub renders
+  them at request time, so a log can name the commit the run tested and the commit it blames
+  without either sha appearing in the JSON.
+- `tests/eval-github.test.ts`: a shallow build keeps one commit whose sha is not the
+  culprit's, the stub serves both shas, the scripted typed arm cites the culprit and the
+  scripted raw arm cannot; plus the two new parse rejections.
+
+### Changed
+
+- The docs now count forty fixtures (thirty git, ten CI, four of them shallow), and
+  `docs/eval.md` says where the CI kind separates the arms and where it still does not.
+- The published measurement is re-run on all forty: over three runs the typed arm scores
+  120/120 and the raw arm 108/120, because the twelve shallow cases are the ones a depth-1
+  clone makes unanswerable. On the thirty git cases the raw arm still wins on cost, 6,548
+  against 13,567 tokens per case; on the shallow four it spends 24,118 tokens per case and
+  answers none, so the table now shows both halves instead of an average that hides them.
+
 ## 0.4.0 - 2026-11-12
 
 ### Added

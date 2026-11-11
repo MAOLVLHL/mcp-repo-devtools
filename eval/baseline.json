@@ -33,6 +33,10 @@
     "refresh-token-keyerror": "pass",
     "report-dates-drift-by-timezone": "pass",
     "retry-loop-no-longer-backs-off": "pass",
+    "shallow-ci-midnight-rolls-back-a-day": "pass",
+    "shallow-ci-port-parser-accepts-junk": "pass",
+    "shallow-ci-rounds-each-line-first": "pass",
+    "shallow-ci-slug-keeps-punctuation": "pass",
     "shared-default-list-accumulates": "pass",
     "slug-regex-consumes-underscore": "pass",
     "sort-mutates-the-callers-array": "pass",
@@ -42,8 +46,8 @@
     "unicode-nfc-compare-dropped": "pass"
   },
   "summary": {
-    "cases": 36,
-    "passed": 36,
+    "cases": 40,
+    "passed": 40,
     "successRate": 1
   }
 }
