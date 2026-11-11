@@ -16,7 +16,14 @@
       "idempotentHint": true,
       "openWorldHint": true,
       "readOnlyHint": true
-    }
+    },
+    "output": [
+      "checkedRuns",
+      "failures",
+      "ref",
+      "repo",
+      "sha"
+    ]
   },
   {
     "name": "gh_issue_search",
@@ -34,7 +41,14 @@
       "idempotentHint": true,
       "openWorldHint": true,
       "readOnlyHint": true
-    }
+    },
+    "output": [
+      "issues",
+      "query",
+      "repo",
+      "state",
+      "totalCount"
+    ]
   },
   {
     "name": "gh_pr_context",
@@ -51,7 +65,25 @@
       "idempotentHint": true,
       "openWorldHint": true,
       "readOnlyHint": true
-    }
+    },
+    "output": [
+      "additions",
+      "author",
+      "base",
+      "bodyExcerpt",
+      "changedFiles",
+      "comments",
+      "deletions",
+      "draft",
+      "files",
+      "filesTruncated",
+      "head",
+      "number",
+      "repo",
+      "reviews",
+      "state",
+      "title"
+    ]
   },
   {
     "name": "git_diff",
@@ -70,7 +102,14 @@
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true
-    }
+    },
+    "output": [
+      "base",
+      "diff",
+      "mode",
+      "path",
+      "truncated"
+    ]
   },
   {
     "name": "git_log",
@@ -87,7 +126,11 @@
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true
-    }
+    },
+    "output": [
+      "commits",
+      "path"
+    ]
   },
   {
     "name": "git_status",
@@ -102,6 +145,14 @@
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true
-    }
+    },
+    "output": [
+      "ahead",
+      "behind",
+      "branch",
+      "changes",
+      "truncated",
+      "upstream"
+    ]
   }
 ]
