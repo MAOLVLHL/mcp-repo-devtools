@@ -1,19 +1,25 @@
 # mcp-repo-devtools
 
-`Read-only` MCP server for the three things you look up before touching a repository: **git history, GitHub issues, and CI failures**.
+MCP server for the things you look up before touching a repository: **git history, GitHub issues, CI failures, and pull requests**. Read-only by default.
 
-An agent that can read a whole log file will read a whole log file. This server gives it six narrow tools instead, each with a hard output budget and a hard boundary on what it may touch.
+An agent that can read a whole log file will read a whole log file. This server gives it narrow tools instead, each with a hard output budget and a hard boundary on what it may touch.
 
 ```text
 git_status        branch, upstream, ahead/behind, changed paths
 git_log           newest commits, optionally scoped to a path
 git_diff          --stat by default, unified patch on request
 gh_issue_search   issues in one repo, newest activity first
-gh_ci_failures    only the failing checks, with failed step names
+gh_ci_failures    only the failing checks, failed steps, optional log tail
 gh_pr_context     title, body, files, reviews and review comments
+
+with MCP_ENABLE_WRITE=1 additionally:
+gh_pr_create      open a pull request from a pushed branch
+gh_issue_create   file an issue
+gh_pr_comment     comment on an issue or pull request
 ```
 
-Nothing here writes. There is no `git push`, no shell, no arbitrary URL fetch.
+There is no `git push`, no shell, no arbitrary URL fetch. The write tools only
+exist when `MCP_ENABLE_WRITE=1`, and every write logs a line to stderr.
 
 ## Why a separate server
 
@@ -44,7 +50,8 @@ Either way the server speaks MCP over stdio and needs two environment variables:
 | Variable | Required | Meaning |
 | --- | --- | --- |
 | `MCP_ALLOWED_ROOTS` | yes | Directories the server may read, separated by the platform path separator (`:` on Unix, `;` on Windows). Filesystem roots are refused. |
-| `GITHUB_TOKEN` | no | Raises the GitHub API limit from 60 to 5000 requests/hour. Only `repo` read access is needed. |
+| `GITHUB_TOKEN` | no | Raises the GitHub API limit from 60 to 5000 requests/hour. Read access is enough; the write tools need write access and do not work without it. |
+| `MCP_ENABLE_WRITE` | no | Set to `1` to also register `gh_pr_create`, `gh_issue_create` and `gh_pr_comment`. Anything else keeps the server read-only. |
 
 ## Configure a client
 
@@ -131,8 +138,10 @@ Search results only contain issues: pull requests are filtered out even if GitHu
 | --- | --- | --- | --- |
 | `repo` | string | required | `owner/name` |
 | `ref` | string | required | Sha, branch, tag or PR head ref |
+| `include_logs` | boolean | `false` | Also fetch the tail of up to three failing job logs |
+| `log_lines` | int 10–200 | `40` | Lines of tail kept per job |
 
-Reads check runs, keeps the failing ones, then looks up the workflow job to name the failed steps. It never downloads a full log.
+Reads check runs, keeps the failing ones, then looks up the workflow job to name the failed steps. With `include_logs: true` it downloads that job's log archive, unpacks it in process, and keeps only the last `log_lines` lines — the part that usually holds the assertion. The archive is fetched by following GitHub's redirect without the token, so the credential never reaches the blob host. Expired logs (90 days) come back as `log unavailable: …` instead of failing the call.
 
 ### `gh_pr_context`
 
@@ -142,6 +151,26 @@ Reads check runs, keeps the failing ones, then looks up the workflow job to name
 | `number` | int | required | Pull request number |
 
 One call returns the title, body excerpt, base/head, size, up to 100 changed files (30 printed), review states and review comments.
+
+## Write mode
+
+The server is read-only unless you ask for more. With `MCP_ENABLE_WRITE=1` three
+tools are added:
+
+| Tool | Argument | What it does |
+| --- | --- | --- |
+| `gh_pr_create` | `repo`, `title`, `head`, `base`, `body`, `draft` | Opens a pull request from a branch that is **already pushed** |
+| `gh_issue_create` | `repo`, `title`, `body`, `labels` | Files an issue |
+| `gh_pr_comment` | `repo`, `number`, `body` | Comments on an issue or pull request |
+
+What write mode deliberately cannot do: push, force-push, merge, close, delete a
+branch, edit files, or create a branch. Those either need a shell (which this
+server does not have) or belong to the agent's own git client. Every write call
+appends a line to stderr, so the host's logs show what the model changed.
+
+```bash
+MCP_ENABLE_WRITE=1 GITHUB_TOKEN=ghp_… node dist/index.js
+```
 
 ## Output contract
 
@@ -177,7 +206,7 @@ What this is **not**: a sandbox. It reads the repositories you point it at, with
 ```bash
 npm install
 npm run build        # tsc -> dist/
-npm test             # build + node:test (36 tests)
+npm test             # build + node:test (49 tests)
 npm run inspect      # MCP Inspector against the built server
 ```
 
@@ -192,18 +221,21 @@ Layout:
 ```text
 src/config.ts   MCP_ALLOWED_ROOTS parsing and realpath containment
 src/git.ts      execFile wrapper, allowlists, status/log/diff
-src/github.ts   REST calls for issues, checks and pull requests
-src/text.ts     output budget and credential redaction
+src/github.ts   REST calls for issues, checks, pull requests and writes
+src/zip.ts      minimal zip reader for Actions job logs
+src/text.ts     output budget, log tail and credential redaction
 src/server.ts   tool registration and text formatting
 src/index.ts    stdio entry point
 ```
 
+`docs/architecture.md` has the trust-boundary diagram and the request lifecycle.
+
 ## Roadmap
 
-- `gh_ci_failures`: optionally fetch the failing job's log and extract only the error block
+- `gh_ci_failures`: extract only the lines around the first error marker instead of a fixed tail
 - `gh_issue_search`: cache ETags between calls
 - `git_blame` / `git_show`: already allowed at the transport layer, not exposed yet
-- HTTP transport for hosted use (out of scope for v0.1: stdio keeps the trust boundary simple)
+- HTTP transport for hosted use (out of scope for now: stdio keeps the trust boundary simple)
 
 ## License
 
