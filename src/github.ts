@@ -4,6 +4,7 @@
  */
 
 import { assertSafeRef } from "./git.js";
+import { isCancellation, NO_CONTEXT, withTimeout, type RequestContext } from "./request-context.js";
 import { redact, tailLines } from "./text.js";
 import { decodeLogArchive } from "./zip.js";
 
@@ -38,7 +39,11 @@ export function assertRepoName(repo: string): string {
   return value;
 }
 
-async function ghFetch<T>(pathname: string, token: string | null): Promise<T> {
+async function ghFetch<T>(
+  pathname: string,
+  token: string | null,
+  context: RequestContext = NO_CONTEXT,
+): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
@@ -52,9 +57,12 @@ async function ghFetch<T>(pathname: string, token: string | null): Promise<T> {
   try {
     response = await fetch(API_BASE + pathname, {
       headers,
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: withTimeout(context.signal, TIMEOUT_MS),
     });
   } catch (error) {
+    if (isCancellation(context, error)) {
+      throw new GitHubError("request cancelled by the client", null);
+    }
     const message = error instanceof Error ? error.message : String(error);
     throw new GitHubError("could not reach api.github.com: " + message, null);
   }
@@ -133,6 +141,7 @@ interface IssueSearchResponse {
 export async function searchIssues(
   options: IssueSearchOptions,
   token: string | null,
+  context: RequestContext = NO_CONTEXT,
 ): Promise<{ totalCount: number; items: IssueSummary[] }> {
   const repo = assertRepoName(options.repo);
   const parts = ["repo:" + repo, "is:issue"];
@@ -150,7 +159,7 @@ export async function searchIssues(
     "&sort=updated&order=desc&per_page=" +
     String(options.limit);
 
-  const data = await ghFetch<IssueSearchResponse>(pathname, token);
+  const data = await ghFetch<IssueSearchResponse>(pathname, token, context);
   const items = data.items
     .filter((issue) => issue.pull_request === undefined)
     .slice(0, options.limit)
@@ -241,7 +250,11 @@ function clampInt(value: number | undefined, fallback: number, min: number, max:
  * signed blob URL, and that URL must not receive our token — so the redirect is
  * followed by hand rather than by fetch.
  */
-async function ghDownload(pathname: string, token: string | null): Promise<Buffer> {
+async function ghDownload(
+  pathname: string,
+  token: string | null,
+  context: RequestContext = NO_CONTEXT,
+): Promise<Buffer> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
@@ -256,18 +269,21 @@ async function ghDownload(pathname: string, token: string | null): Promise<Buffe
     response = await fetch(API_BASE + pathname, {
       headers,
       redirect: "manual",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: withTimeout(context.signal, TIMEOUT_MS),
     });
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
       if (!location) {
         throw new GitHubError("GitHub redirected " + pathname + " without a location header", null);
       }
-      response = await fetch(location, { signal: AbortSignal.timeout(LOG_TIMEOUT_MS) });
+      response = await fetch(location, { signal: withTimeout(context.signal, LOG_TIMEOUT_MS) });
     }
   } catch (error) {
     if (error instanceof GitHubError) {
       throw error;
+    }
+    if (isCancellation(context, error)) {
+      throw new GitHubError("request cancelled by the client", null);
     }
     const message = error instanceof Error ? error.message : String(error);
     throw new GitHubError("could not download " + pathname + ": " + message, null);
@@ -300,8 +316,9 @@ async function jobLogTail(
   jobId: number,
   lines: number,
   token: string | null,
+  context: RequestContext = NO_CONTEXT,
 ): Promise<string> {
-  const archive = await ghDownload("/repos/" + repo + "/actions/jobs/" + String(jobId) + "/logs", token);
+  const archive = await ghDownload("/repos/" + repo + "/actions/jobs/" + String(jobId) + "/logs", token, context);
   const text = decodeLogArchive(archive);
   if (text.length === 0) {
     return "";
@@ -315,12 +332,17 @@ export async function ciFailures(
   refInput: string,
   token: string | null,
   options: CiFailureOptions = {},
+  context: RequestContext = NO_CONTEXT,
 ): Promise<CiFailureReport> {
   const repo = assertRepoName(repoInput);
   const ref = assertSafeRef(refInput, "ref");
+  // The total is unknowable before the first call, so the first step is honest
+  // about not having one yet rather than guessing a number that would jump.
+  context.progress({ progress: 0, message: "check runs for " + ref });
   const data = await ghFetch<RawCheckRuns>(
     "/repos/" + repo + "/commits/" + encodeURIComponent(ref) + "/check-runs?per_page=100&filter=latest",
     token,
+    context,
   );
 
   const failing = data.check_runs.filter(
@@ -332,6 +354,14 @@ export async function ciFailures(
   let lookups = 0;
   let logBudget = options.includeLogs === true ? MAX_LOG_JOBS : 0;
 
+  // The failing set is known now, so every later step can be counted: the
+  // check-runs hop, one lookup per run, one download per log.
+  const lookupsBudget = Math.min(failing.length, MAX_JOB_LOOKUPS);
+  const logsBudget = options.includeLogs === true ? Math.min(lookupsBudget, MAX_LOG_JOBS) : 0;
+  const total = 1 + lookupsBudget + logsBudget;
+  let step = 1;
+  context.progress({ progress: step, total, message: failing.length + " failing check(s)" });
+
   for (const run of failing.slice(0, MAX_FAILING_RUNS)) {
     const failedSteps: string[] = [];
     let logTail = "";
@@ -340,10 +370,13 @@ export async function ciFailures(
     const runMatch = /\/actions\/runs\/(\d+)/.exec(detailsUrl);
     if (runMatch && lookups < MAX_JOB_LOOKUPS) {
       lookups += 1;
+      step += 1;
+      context.progress({ progress: step, total, message: "jobs for run " + String(runMatch[1]) });
       try {
         const jobs = await ghFetch<RawJobs>(
           "/repos/" + repo + "/actions/runs/" + String(runMatch[1]) + "/jobs?per_page=100&filter=latest",
           token,
+          context,
         );
         let failingJobId: number | null = null;
         for (const job of jobs.jobs) {
@@ -356,16 +389,24 @@ export async function ciFailures(
         }
         if (logBudget > 0 && failingJobId !== null) {
           logBudget -= 1;
+          step += 1;
+          context.progress({ progress: step, total, message: "log for job " + String(failingJobId) });
           try {
-            logTail = await jobLogTail(repo, failingJobId, logLines, token);
+            logTail = await jobLogTail(repo, failingJobId, logLines, token, context);
             if (logTail.length === 0) {
               logNote = "no log archive returned for this job";
             }
           } catch (error) {
+            if (isCancellation(context, error)) {
+              throw error;
+            }
             logNote = error instanceof Error ? error.message : String(error);
           }
         }
-      } catch {
+      } catch (error) {
+        if (isCancellation(context, error)) {
+          throw error;
+        }
         // Job details are best-effort; the check run itself is the contract.
       }
     }
@@ -379,6 +420,12 @@ export async function ciFailures(
       logTail,
       logNote,
     });
+  }
+
+  // A check run without a workflow id cannot be looked up, so the counted
+  // steps may not all be spent; report the end of the work anyway.
+  if (step < total) {
+    context.progress({ progress: total, total, message: failures.length + " failure(s)" });
   }
 
   return { ref, sha, checkedRuns: data.total_count, failures };
@@ -447,6 +494,7 @@ export async function prContext(
   repoInput: string,
   pullNumber: number,
   token: string | null,
+  context: RequestContext = NO_CONTEXT,
 ): Promise<PrContext> {
   const repo = assertRepoName(repoInput);
   if (!Number.isInteger(pullNumber) || pullNumber <= 0) {
@@ -455,10 +503,10 @@ export async function prContext(
   const base = "/repos/" + repo + "/pulls/" + String(pullNumber);
 
   const [pull, files, reviews, comments] = await Promise.all([
-    ghFetch<RawPull>(base, token),
-    ghFetch<RawFile[]>(base + "/files?per_page=100", token),
-    ghFetch<RawReview[]>(base + "/reviews?per_page=50", token),
-    ghFetch<RawReviewComment[]>(base + "/comments?per_page=50", token),
+    ghFetch<RawPull>(base, token, context),
+    ghFetch<RawFile[]>(base + "/files?per_page=100", token, context),
+    ghFetch<RawReview[]>(base + "/reviews?per_page=50", token, context),
+    ghFetch<RawReviewComment[]>(base + "/comments?per_page=50", token, context),
   ]);
 
   return {
@@ -516,6 +564,7 @@ async function ghSend<T>(
   pathname: string,
   token: string | null,
   body: unknown,
+  context: RequestContext = NO_CONTEXT,
 ): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
@@ -533,9 +582,12 @@ async function ghSend<T>(
       method: "POST",
       headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: withTimeout(context.signal, TIMEOUT_MS),
     });
   } catch (error) {
+    if (isCancellation(context, error)) {
+      throw new GitHubError("request cancelled by the client", null);
+    }
     const message = error instanceof Error ? error.message : String(error);
     throw new GitHubError("could not reach api.github.com: " + message, null);
   }
@@ -580,6 +632,7 @@ export interface CreatedPullRequest {
 export async function createPullRequest(
   input: CreatePullRequestInput,
   token: string | null,
+  context: RequestContext = NO_CONTEXT,
 ): Promise<CreatedPullRequest> {
   const repo = assertRepoName(input.repo);
   const auth = requireToken(token, "opening a pull request");
@@ -592,6 +645,7 @@ export async function createPullRequest(
     "/repos/" + repo + "/pulls",
     auth,
     { title, head, base, body, draft: input.draft === true },
+    context,
   );
   return {
     number: created.number,
@@ -618,6 +672,7 @@ export interface CreatedIssue {
 export async function createIssue(
   input: CreateIssueInput,
   token: string | null,
+  context: RequestContext = NO_CONTEXT,
 ): Promise<CreatedIssue> {
   const repo = assertRepoName(input.repo);
   const auth = requireToken(token, "filing an issue");
@@ -628,6 +683,7 @@ export async function createIssue(
     "/repos/" + repo + "/issues",
     auth,
     { title, body: input.body ?? "", ...(labels.length > 0 ? { labels } : {}) },
+    context,
   );
   return { number: created.number, url: created.html_url, title: created.title };
 }
@@ -647,6 +703,7 @@ export interface CreatedComment {
 export async function commentOnThread(
   input: CommentInput,
   token: string | null,
+  context: RequestContext = NO_CONTEXT,
 ): Promise<CreatedComment> {
   const repo = assertRepoName(input.repo);
   const auth = requireToken(token, "commenting");
@@ -659,6 +716,7 @@ export async function commentOnThread(
     "/repos/" + repo + "/issues/" + String(input.number) + "/comments",
     auth,
     { body },
+    context,
   );
   return { id: created.id, url: created.html_url };
 }
