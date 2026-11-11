@@ -22,6 +22,23 @@
 - `tests/request-context.test.ts` and `tests/progress.test.ts`: the context factory,
   the notification sequence, the no-token path and cancellation, over an in-memory
   transport with a stubbed network.
+- `src/agent/`: a reference agent loop over this server's read tools, answering one
+  question — which commit introduced a CI failure. `provider.ts` defines a one-method
+  `Provider` seam with an OpenAI-compatible implementation and a scripted one,
+  `loop.ts` runs turns with caps on turns, calls per turn and bytes per result,
+  `diagnose.ts` holds the task and its evidence-first prompt, and `cli.ts` runs it from
+  the terminal. Read-only by construction: the loop connects with `enableWrite: false`.
+- The loop does not treat silence as an answer: a reply with no text and no tool calls is
+  answered with one more turn (at most twice) asking for the report, so a model that stops
+  mid-thought is nudged instead of scored on an empty string.
+- `scripts/demo-agent.mjs` and `npm run demo:agent`: the loop end to end offline — a
+  failing CI call, a real `git log`, and the report — with no API key.
+- `tests/agent-loop.test.ts`, `tests/agent-provider.test.ts`,
+  `tests/agent-mcp.test.ts` and `tests/agent-openai.test.ts`: the loop mechanics, the
+  request body and error paths, the tool round trip over an in-memory transport, and one
+  run against a real HTTP endpoint that speaks `/chat/completions`.
+- [`docs/agent.md`](docs/agent.md): the loop, the provider seam, the caps, how to point
+  the CLI at any OpenAI-compatible endpoint, and what the agent deliberately is not.
 
 ### Changed
 
