@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.1 - 2026-11-11
+
+### Added
+
+- `bench/measure.mjs` and `bench/README.md`: each tool is measured against the naive command it replaces, on reproducible fixtures (and, for the GitHub rows, a live public repository). The README's numbers come from this run.
+- `docs/tools.md`: the full argument table, example output and truncation behaviour for all nine tools.
+- `docs/security.md`: control-by-control "what it stops / what it does not", plus the four boundary probes the benchmark requires to be refused.
+- `tests/contract.test.ts` and `tests/fixtures/tool-surface.json`: the registered tool surface is now a checked-in contract, with `npm run snapshot` to regenerate it deliberately.
+- `CONTRIBUTING.md`, `SECURITY.md`, issue forms and a pull-request template.
+
+### Changed
+
+- The README now states the measurement, its caveats, and what the server is *not*.
+- No runtime behaviour changed and no tool signature moved: the surface snapshot is the six 0.1.0 tools.
+
 ## 0.2.0 - 2026-11-11
 
 ### Added
