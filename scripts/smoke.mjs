@@ -37,6 +37,12 @@ async function call(name, args) {
   const text = (result.content ?? []).map((part) => part.text ?? "").join("");
   console.log("\n=== " + name + " " + JSON.stringify(args) + " ===");
   console.log(text.slice(0, 1200));
+  if (result.structuredContent) {
+    console.log("structured keys: " + Object.keys(result.structuredContent).sort().join(", "));
+  }
+  if (result.isError) {
+    console.log("isError: true");
+  }
 }
 
 await call("git_status", { repo });

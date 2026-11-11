@@ -6,14 +6,22 @@
 
 - All nine tools carry MCP annotations (`readOnlyHint`, `destructiveHint`,
   `idempotentHint`, `openWorldHint`), and the server sends usage instructions at
-  initialize, so a host can label or group tools without reading prose.
-- `tests/contract.test.ts` now pins the four hints per tool, and
-  `scripts/contract-snapshot.mjs` records them in the checked-in surface fixture.
+  initialize, so a host can label and group tools without reading prose.
+- The six read tools declare an `outputSchema` and return their data as
+  `structuredContent` alongside the text. Structured content passes the same
+  credential redactor (recursively) and is dropped on any failure, so a host never
+  reads fields from a partial result.
+- `git_diff` reports `truncated: true` in its structured copy when the patch was cut.
+- `tests/structured-output.test.ts`: field-level assertions for all six read tools,
+  including an over-budget patch and a credential inside a commit subject.
 
 ### Changed
 
-- Nothing about calling a tool changed: names, argument schemas, defaults and the
-  rendered text are identical to 0.2.1. The surface only grows.
+- The tool surface grows only additively: names, argument schemas and defaults are
+  unchanged, and the rendered text is byte-identical to 0.2.1.
+- `docs/tools.md` and `docs/architecture.md` now describe the three layers a result
+  can carry, and `scripts/contract-snapshot.mjs` locks annotations and output schemas
+  into the checked-in fixture.
 
 ## 0.2.1 - 2026-11-11
 
