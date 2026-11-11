@@ -58,6 +58,21 @@
   baseline's 30/30, at 1.9× the tokens. Published as measured — a benchmark that can only
   report a win is not one.
 
+- Three MCP prompts — `diagnose-ci`, `review-pr`, `triage-issues` — that a host can offer
+  as commands. Each renders an ordered, read-only plan over the existing tools and ends by
+  naming what not to do (no edits, no comments, no issues).
+- Human confirmation before a write: when the client advertises `elicitation`, the three
+  write tools ask who, what and where first, and send nothing when the answer is no. A
+  refusal returns the human's note with `isError: true`. `MCP_CONFIRM_WRITES=1` fails
+  closed for clients that cannot ask; `=0` never asks.
+- Optional sampling compression: `MCP_SAMPLING_COMPRESSION=1` lets a client that
+  advertises `sampling` summarise a result that would have been clipped, labelled
+  `…compressed from N bytes by the client model`. Timeouts, errors and empty replies fall
+  back to the clip; results inside the budget are untouched and never sampled.
+- [`docs/tools.md`](docs/tools.md): the write-confirmation matrix, the summary format and
+  the three prompt plans. [`docs/architecture.md`](docs/architecture.md): why each of the
+  three capabilities can improve a call but never widen what the server may do.
+
 ### Changed
 
 - The tool surface grows only additively: names, argument schemas and defaults are

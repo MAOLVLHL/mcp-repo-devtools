@@ -10,7 +10,9 @@ import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { compressText } from "./compress.js";
 import { assertAllowedRepo, parseAllowedRoots } from "./config.js";
+import { type WriteRequest, requestWriteApproval } from "./confirm.js";
 import { gitDiff, gitLog, gitStatus } from "./git.js";
 import {
   ciFailures,
@@ -21,6 +23,7 @@ import {
   resolveToken,
   searchIssues,
 } from "./github.js";
+import { PROMPTS, promptResult } from "./prompts.js";
 import { requestContext } from "./request-context.js";
 import { clip, redact, redactDeep } from "./text.js";
 import {
@@ -52,6 +55,18 @@ export interface ServerOptions {
   token?: string | null;
   /** Register the write tools. Defaults to MCP_ENABLE_WRITE=1 in the environment. */
   enableWrite?: boolean;
+  /**
+   * Ask a human before every write. true refuses when the client cannot ask,
+   * false never asks, and leaving it undefined asks when the client advertises
+   * elicitation (a client that cannot ask is not blocked). Env: MCP_CONFIRM_WRITES.
+   */
+  confirmWrites?: boolean;
+  /**
+   * Let the client's model summarise a result that would be clipped. Off by
+   * default: the bytes a tool returns are part of its contract. Env:
+   * MCP_SAMPLING_COMPRESSION=1.
+   */
+  compressOutput?: boolean;
 }
 
 const TRUTHY: ReadonlySet<string> = new Set(["1", "true", "yes", "on"]);
@@ -59,6 +74,14 @@ const TRUTHY: ReadonlySet<string> = new Set(["1", "true", "yes", "on"]);
 /** Write mode is opt-in: anything other than a truthy value keeps the server read-only. */
 export function parseEnableWrite(value: string | undefined): boolean {
   return TRUTHY.has((value ?? "").trim().toLowerCase());
+}
+
+/** Unset is not false here: it means "let the client's capabilities decide". */
+function parseOptionalFlag(value: string | undefined): boolean | undefined {
+  if (value === undefined || value.trim().length === 0) {
+    return undefined;
+  }
+  return TRUTHY.has(value.trim().toLowerCase());
 }
 
 function auditWrite(tool: string, target: string): void {
@@ -103,30 +126,55 @@ function dropUndefined(value: unknown): unknown {
   return value;
 }
 
+/** How a result is shaped on the way out: redact, then summarise or clip. */
+interface RenderSettings {
+  server: McpServer;
+  /** Ask the client's model for a summary instead of cutting the text. */
+  compress: boolean;
+  signal?: AbortSignal;
+}
+
+/**
+ * Redaction always runs first, so a summary cannot resurface a secret that the
+ * clip path would have removed. Compression never throws: it falls back to the
+ * clip it was replacing.
+ */
+async function renderText(text: string, settings?: RenderSettings): Promise<string> {
+  const cleaned = redact(text);
+  if (!settings?.compress) {
+    return clip(cleaned);
+  }
+  const outcome = await compressText(settings.server, cleaned, { signal: settings.signal });
+  return outcome.text;
+}
+
 /**
  * Text is always the answer; structured content is the same data for a host
  * that would rather parse fields than lines. Both pass the redactor, because a
  * secret in a commit subject is as exposed as one in a diff.
  */
-function render(result: ToolResult): CallToolResult {
-  const body = ok(clip(redact(result.text)));
+async function render(result: ToolResult, settings?: RenderSettings): Promise<CallToolResult> {
+  const body = ok(await renderText(result.text, settings));
   return {
     ...body,
     structuredContent: dropUndefined(redactDeep(result.structured)) as Record<string, unknown>,
   };
 }
 
-async function guarded(work: () => Promise<string>): Promise<CallToolResult> {
+async function guarded(work: () => Promise<string>, settings?: RenderSettings): Promise<CallToolResult> {
   try {
-    return ok(clip(redact(await work())));
+    return ok(await renderText(await work(), settings));
   } catch (error) {
     return failure(error);
   }
 }
 
-async function guardedStructured(work: () => Promise<ToolResult>): Promise<CallToolResult> {
+async function guardedStructured(
+  work: () => Promise<ToolResult>,
+  settings?: RenderSettings,
+): Promise<CallToolResult> {
   try {
-    return render(await work());
+    return await render(await work(), settings);
   } catch (error) {
     return failure(error);
   }
@@ -247,6 +295,8 @@ export function createServer(options: ServerOptions = {}): McpServer {
   const roots = options.allowedRoots ?? parseAllowedRoots(process.env["MCP_ALLOWED_ROOTS"]);
   const token = options.token === undefined ? resolveToken() : options.token;
   const writeEnabled = options.enableWrite ?? parseEnableWrite(process.env["MCP_ENABLE_WRITE"]);
+  const confirmWrites = options.confirmWrites ?? parseOptionalFlag(process.env["MCP_CONFIRM_WRITES"]);
+  const compressOutput = options.compressOutput ?? parseEnableWrite(process.env["MCP_SAMPLING_COMPRESSION"]);
 
   const server = new McpServer(
     { name: SERVER_NAME, version: VERSION },
@@ -254,6 +304,39 @@ export function createServer(options: ServerOptions = {}): McpServer {
   );
 
   const resolveRepo = (repo: string): string => assertAllowedRepo(repo, roots);
+
+  const settingsFor = (extra: Parameters<typeof requestContext>[0]): RenderSettings => ({
+    server,
+    compress: compressOutput,
+    signal: requestContext(extra).signal,
+  });
+
+  /**
+   * Ask before mutating, and return the refusal to send back when the human
+   * said no. A refusal is a normal tool error, not an exception: the caller
+   * needs to read the reason.
+   */
+  const approveWrite = async (
+    extra: Parameters<typeof requestContext>[0],
+    request: WriteRequest,
+  ): Promise<CallToolResult | null> => {
+    const approval = await requestWriteApproval(server, request, {
+      requireConfirmation: confirmWrites,
+      signal: requestContext(extra).signal,
+    });
+    if (approval.approved) {
+      return null;
+    }
+    return failure(new Error("write not approved (" + approval.via + "): " + approval.reason));
+  };
+
+  for (const prompt of PROMPTS) {
+    server.registerPrompt(
+      prompt.name,
+      { title: prompt.title, description: prompt.description, argsSchema: prompt.argsSchema },
+      (args) => promptResult(prompt.description, prompt.render(args as Record<string, string | undefined>)),
+    );
+  }
 
   server.registerTool(
     "git_status",
@@ -282,7 +365,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
             truncated: status.truncated,
           },
         };
-      }),
+      }, settingsFor(extra)),
   );
 
   server.registerTool(
@@ -307,7 +390,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
           text: formatLog(commits, path),
           structured: { path: path ?? null, commits },
         };
-      }),
+      }, settingsFor(extra)),
   );
 
   server.registerTool(
@@ -346,7 +429,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
             truncated: shown !== body,
           },
         };
-      }),
+      }, settingsFor(extra)),
   );
 
   server.registerTool(
@@ -376,7 +459,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
           ),
           structured: { repo, query, state, totalCount: result.totalCount, issues: result.items },
         };
-      }),
+      }, settingsFor(extra)),
   );
 
   server.registerTool(
@@ -424,7 +507,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
             failures: report.failures,
           },
         };
-      }),
+      }, settingsFor(extra)),
   );
 
   server.registerTool(
@@ -465,7 +548,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
             comments: context.comments,
           },
         };
-      }),
+      }, settingsFor(extra)),
   );
 
   if (writeEnabled) {
@@ -486,8 +569,17 @@ export function createServer(options: ServerOptions = {}): McpServer {
         },
         annotations: REMOTE_WRITE,
       },
-      async ({ repo, title, head, base, body, draft }, extra) =>
-        guarded(async () => {
+      async ({ repo, title, head, base, body, draft }, extra) => {
+        const refused = await approveWrite(extra, {
+          tool: "gh_pr_create",
+          action: "Open a pull request",
+          target: repo + " (" + head + " -> " + base + ")",
+          details: [title],
+        });
+        if (refused) {
+          return refused;
+        }
+        return guarded(async () => {
           auditWrite("gh_pr_create", repo + " " + head + " -> " + base);
           const pr = await createPullRequest({ repo, title, head, base, body, draft }, token, requestContext(extra));
           return [
@@ -495,7 +587,8 @@ export function createServer(options: ServerOptions = {}): McpServer {
             pr.title,
             pr.url,
           ].join("\n");
-        }),
+        }, settingsFor(extra));
+      },
     );
 
     server.registerTool(
@@ -513,12 +606,22 @@ export function createServer(options: ServerOptions = {}): McpServer {
         },
         annotations: REMOTE_WRITE,
       },
-      async ({ repo, title, body, labels }, extra) =>
-        guarded(async () => {
+      async ({ repo, title, body, labels }, extra) => {
+        const refused = await approveWrite(extra, {
+          tool: "gh_issue_create",
+          action: "File an issue",
+          target: repo,
+          details: [title],
+        });
+        if (refused) {
+          return refused;
+        }
+        return guarded(async () => {
           auditWrite("gh_issue_create", repo);
           const issue = await createIssue({ repo, title, body, labels }, token, requestContext(extra));
           return ["filed issue #" + issue.number, issue.title, issue.url].join("\n");
-        }),
+        }, settingsFor(extra));
+      },
     );
 
     server.registerTool(
@@ -535,12 +638,22 @@ export function createServer(options: ServerOptions = {}): McpServer {
         },
         annotations: REMOTE_WRITE,
       },
-      async ({ repo, number, body }, extra) =>
-        guarded(async () => {
+      async ({ repo, number, body }, extra) => {
+        const refused = await approveWrite(extra, {
+          tool: "gh_pr_comment",
+          action: "Post a comment",
+          target: repo + "#" + String(number),
+          details: [body.split("\n")[0] ?? ""],
+        });
+        if (refused) {
+          return refused;
+        }
+        return guarded(async () => {
           auditWrite("gh_pr_comment", repo + "#" + String(number));
           const comment = await commentOnThread({ repo, number, body }, token, requestContext(extra));
           return "commented on " + repo + "#" + String(number) + "\n" + comment.url;
-        }),
+        }, settingsFor(extra));
+      },
     );
   }
 
