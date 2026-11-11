@@ -113,6 +113,13 @@ host can read fields instead of parsing lines; all nine tools carry
 one paragraph of usage instructions when a client connects. Annotations are hints, not
 permissions — write tools stay unregistered unless `MCP_ENABLE_WRITE=1`.
 
+A call that spans several GitHub hops can take ten to thirty seconds. If the client
+sends a `progressToken`, `gh_ci_failures` reports one progress notification per hop
+(check runs, then each run's jobs, then each job's log), so the host can show the step
+instead of a spinner; the last notification equals the total. Without a token nothing
+is sent and the result is unchanged. Cancelling the call aborts the in-flight `fetch`
+and the running `git` process.
+
 Full argument tables, example output, the exact truncation notes and what each layer
 carries: [`docs/tools.md`](docs/tools.md).
 

@@ -22,7 +22,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
-    "test": "npm run build && node --import tsx --test tests/text.test.ts tests/config.test.ts tests/zip.test.ts tests/git.test.ts tests/github.test.ts tests/server.test.ts tests/structured-output.test.ts tests/contract.test.ts",
+    "test": "npm run build && node --import tsx --test tests/text.test.ts tests/config.test.ts tests/zip.test.ts tests/git.test.ts tests/github.test.ts tests/server.test.ts tests/structured-output.test.ts tests/request-context.test.ts tests/progress.test.ts tests/contract.test.ts",
     "bench": "npm run build && node bench/measure.mjs",
     "snapshot": "node --import tsx scripts/contract-snapshot.mjs",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",

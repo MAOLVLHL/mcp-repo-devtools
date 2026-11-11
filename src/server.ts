@@ -21,6 +21,7 @@ import {
   resolveToken,
   searchIssues,
 } from "./github.js";
+import { requestContext } from "./request-context.js";
 import { clip, redact, redactDeep } from "./text.js";
 import {
   LOCAL_READ,
@@ -267,9 +268,9 @@ export function createServer(options: ServerOptions = {}): McpServer {
       outputSchema: gitStatusOutput,
       annotations: LOCAL_READ,
     },
-    async ({ repo }) =>
+    async ({ repo }, extra) =>
       guardedStructured(async () => {
-        const status = await gitStatus(resolveRepo(repo));
+        const status = await gitStatus(resolveRepo(repo), requestContext(extra));
         return {
           text: formatStatus(status),
           structured: {
@@ -299,9 +300,9 @@ export function createServer(options: ServerOptions = {}): McpServer {
       outputSchema: gitLogOutput,
       annotations: LOCAL_READ,
     },
-    async ({ repo, path, limit }) =>
+    async ({ repo, path, limit }, extra) =>
       guardedStructured(async () => {
-        const commits = await gitLog(resolveRepo(repo), { path, limit });
+        const commits = await gitLog(resolveRepo(repo), { path, limit }, requestContext(extra));
         return {
           text: formatLog(commits, path),
           structured: { path: path ?? null, commits },
@@ -327,9 +328,13 @@ export function createServer(options: ServerOptions = {}): McpServer {
       outputSchema: gitDiffOutput,
       annotations: LOCAL_READ,
     },
-    async ({ repo, base, path, mode, context_lines }) =>
+    async ({ repo, base, path, mode, context_lines }, extra) =>
       guardedStructured(async () => {
-        const body = await gitDiff(resolveRepo(repo), { base, path, mode, contextLines: context_lines });
+        const body = await gitDiff(
+          resolveRepo(repo),
+          { base, path, mode, contextLines: context_lines },
+          requestContext(extra),
+        );
         const shown = clip(body, { hint: "narrow with path= or lower context_lines=" });
         return {
           text: "diff (" + mode + ") against " + (base ?? "HEAD") + (path ? " for " + path : "") + "\n\n" + body,
@@ -361,9 +366,9 @@ export function createServer(options: ServerOptions = {}): McpServer {
       outputSchema: issueSearchOutput,
       annotations: REMOTE_READ,
     },
-    async ({ repo, query, state, limit }) =>
+    async ({ repo, query, state, limit }, extra) =>
       guardedStructured(async () => {
-        const result = await searchIssues({ repo, query, state, limit }, token);
+        const result = await searchIssues({ repo, query, state, limit }, token, requestContext(extra));
         return {
           text: formatIssues(
             result,
@@ -400,12 +405,15 @@ export function createServer(options: ServerOptions = {}): McpServer {
       outputSchema: ciFailuresOutput,
       annotations: REMOTE_READ,
     },
-    async ({ repo, ref, include_logs, log_lines }) =>
+    async ({ repo, ref, include_logs, log_lines }, extra) =>
       guardedStructured(async () => {
-        const report = await ciFailures(repo, ref, token, {
-          includeLogs: include_logs,
-          logLines: log_lines,
-        });
+        const report = await ciFailures(
+          repo,
+          ref,
+          token,
+          { includeLogs: include_logs, logLines: log_lines },
+          requestContext(extra),
+        );
         return {
           text: formatCi(report, repo),
           structured: {
@@ -433,9 +441,9 @@ export function createServer(options: ServerOptions = {}): McpServer {
       outputSchema: prContextOutput,
       annotations: REMOTE_READ,
     },
-    async ({ repo, number }) =>
+    async ({ repo, number }, extra) =>
       guardedStructured(async () => {
-        const context = await prContext(repo, number, token);
+        const context = await prContext(repo, number, token, requestContext(extra));
         return {
           text: formatPr(context, repo),
           structured: {
@@ -478,10 +486,10 @@ export function createServer(options: ServerOptions = {}): McpServer {
         },
         annotations: REMOTE_WRITE,
       },
-      async ({ repo, title, head, base, body, draft }) =>
+      async ({ repo, title, head, base, body, draft }, extra) =>
         guarded(async () => {
           auditWrite("gh_pr_create", repo + " " + head + " -> " + base);
-          const pr = await createPullRequest({ repo, title, head, base, body, draft }, token);
+          const pr = await createPullRequest({ repo, title, head, base, body, draft }, token, requestContext(extra));
           return [
             "opened PR #" + pr.number + (pr.draft ? " (draft)" : ""),
             pr.title,
@@ -505,10 +513,10 @@ export function createServer(options: ServerOptions = {}): McpServer {
         },
         annotations: REMOTE_WRITE,
       },
-      async ({ repo, title, body, labels }) =>
+      async ({ repo, title, body, labels }, extra) =>
         guarded(async () => {
           auditWrite("gh_issue_create", repo);
-          const issue = await createIssue({ repo, title, body, labels }, token);
+          const issue = await createIssue({ repo, title, body, labels }, token, requestContext(extra));
           return ["filed issue #" + issue.number, issue.title, issue.url].join("\n");
         }),
     );
@@ -527,10 +535,10 @@ export function createServer(options: ServerOptions = {}): McpServer {
         },
         annotations: REMOTE_WRITE,
       },
-      async ({ repo, number, body }) =>
+      async ({ repo, number, body }, extra) =>
         guarded(async () => {
           auditWrite("gh_pr_comment", repo + "#" + String(number));
-          const comment = await commentOnThread({ repo, number, body }, token);
+          const comment = await commentOnThread({ repo, number, body }, token, requestContext(extra));
           return "commented on " + repo + "#" + String(number) + "\n" + comment.url;
         }),
     );

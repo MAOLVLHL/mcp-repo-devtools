@@ -39,6 +39,26 @@ server agrees: the protection is that write tools are not registered at all unle
 | `gh_issue_search`, `gh_ci_failures`, `gh_pr_context` | true | false | true | true |
 | `gh_pr_create`, `gh_issue_create`, `gh_pr_comment` | false | true | false | true |
 
+## Progress and cancellation
+
+A call that spans several GitHub hops (`gh_ci_failures` reads check runs, then a
+run's jobs, then a job's log archive) can take ten to thirty seconds. While it runs
+the server reports one progress notification per hop, so a client can show which
+step it is on rather than a spinner.
+
+- The first notification has no `total`: the number of failing runs is not known
+  until the first response arrives, and a total that jumps is worse than none.
+- `progress` is monotonic, never below zero, and the last notification equals
+  `total`.
+- Notifications are best effort. A client that does not send a `progressToken`
+  receives nothing, and the result is byte-for-byte the same as a client that does.
+- Everything the server fetches carries the request's abort signal, so cancelling
+  the tool call aborts the in-flight `fetch` and the running `git` child process.
+
+Clients that apply a single request timeout should enable `resetTimeoutOnProgress`,
+otherwise a call longer than the default 60 seconds is cut off even though progress
+is arriving.
+
 ---
 
 ## `git_status`
