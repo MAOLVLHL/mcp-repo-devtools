@@ -1,0 +1,22 @@
+# Dependency updates, with one deliberate exception.
+#
+# @modelcontextprotocol/sdk 1.32.2 is built against zod 3 and imports the v3
+# entrypoints, so a zod 4 bump compiles nothing: the tests fail on the first
+# import, and the pull request cannot be made green without forking the SDK.
+# The major bump stays off until the SDK moves, and this file is where that
+# decision is written down rather than remembered.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: zod
+        update-types:
+          - version-update:semver-major
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly

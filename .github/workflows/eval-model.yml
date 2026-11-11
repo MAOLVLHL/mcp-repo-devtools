@@ -14,8 +14,13 @@ on:
         type: choice
         options: [mcp, baseline]
         default: mcp
+      kind:
+        description: git, github or all; the raw arm cannot answer github cases
+        type: choice
+        options: [all, git, github]
+        default: all
       baseline:
-        description: Baseline file to compare against
+        description: Baseline file to compare against, recorded on the same arm and kind
         default: eval/baseline.json
       max-regressions:
         description: Regressions to tolerate (raising this is an admission, not a fix)
@@ -58,6 +63,7 @@ jobs:
         run: |
           node dist/eval/cli.js \
             --arm "${{ inputs.arm }}" \
+            --kind "${{ inputs.kind }}" \
             --provider openai \
             --check "${{ inputs.baseline }}" \
             --max-regressions "${{ inputs.max-regressions }}" \

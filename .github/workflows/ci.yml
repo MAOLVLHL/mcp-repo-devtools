@@ -56,11 +56,13 @@ jobs:
       - run: npm ci
       - run: npm run build
       # Both arms run the scripted oracle, so this proves the harness and every
-      # fixture still work: 30/30 or the fixtures drifted. The model is measured
-      # separately, by eval-model.yml, because a stochastic run is not a gate.
-      - name: mcp arm, 30 fixtures
+      # fixture still work: 36/36 or the fixtures drifted. The raw arm is scored on
+      # the git fixtures because its one tool cannot read a CI log; no miss is
+      # excused on either arm. The model is measured separately, by eval-model.yml,
+      # because a stochastic run is not a gate.
+      - name: mcp arm, thirty-six fixtures
         run: npm run eval
-      - name: raw git arm, 30 fixtures
+      - name: raw git arm, the thirty git fixtures
         run: npm run eval:baseline
       - name: no fixture regressed against the recorded baseline
         run: npm run eval:check
