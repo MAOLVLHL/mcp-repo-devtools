@@ -37,6 +37,7 @@ export const SERVER_INSTRUCTIONS = [
   "This server reads git history and GitHub state; a result is text, plus the same data as structured content when the tool declares an output schema.",
   "Start with git_status to see what changed, then git_log or git_diff scoped with path=.",
   "Results are capped at 64 KB and 200 lines, and the last line says which argument narrows them.",
+  "gh_ci_failures keeps the log around the first error, not the last lines, because the end of a job log is teardown.",
   "GitHub tools need GITHUB_TOKEN for anything beyond 60 requests per hour.",
   "Write tools appear only when MCP_ENABLE_WRITE=1, and are annotated destructive: they open a pull request, file an issue or post a comment.",
 ].join(" ");
@@ -99,7 +100,7 @@ export const issueSearchOutput = {
   ),
 };
 
-/** `gh_ci_failures`: only failing checks, with the log tail when asked. */
+/** `gh_ci_failures`: only failing checks, with the log around the first error when asked. */
 export const ciFailuresOutput = {
   repo: z.string().describe("Repository as owner/name"),
   ref: z.string().describe("The ref that was resolved, e.g. a full sha"),
@@ -113,7 +114,7 @@ export const ciFailuresOutput = {
       summary: z.string(),
       detailsUrl: z.string(),
       failedSteps: z.array(z.string()),
-      logTail: z.string().describe("Tail of the job log, empty unless include_logs was set"),
+      logTail: z.string().describe("Job log kept around the first error, empty unless include_logs was set"),
       logNote: z.string().describe("Why a requested log is missing, e.g. the archive expired"),
     }),
   ),

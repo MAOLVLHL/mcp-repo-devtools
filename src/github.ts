@@ -5,7 +5,8 @@
 
 import { assertSafeRef } from "./git.js";
 import { isCancellation, NO_CONTEXT, withTimeout, type RequestContext } from "./request-context.js";
-import { redact, tailLines } from "./text.js";
+import { errorWindow, redact } from "./text.js";
+import { USER_AGENT } from "./version.js";
 import { decodeLogArchive } from "./zip.js";
 
 const API_BASE = "https://api.github.com";
@@ -47,7 +48,7 @@ async function ghFetch<T>(
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
-    "User-Agent": "mcp-repo-devtools/0.1.0",
+    "User-Agent": USER_AGENT,
   };
   if (token) {
     headers["Authorization"] = "Bearer " + token;
@@ -232,9 +233,9 @@ const MAX_LOG_JOBS = 3;
 const DEFAULT_LOG_LINES = 40;
 
 export interface CiFailureOptions {
-  /** Fetch the log tail of up to three failing jobs. One extra request per job. */
+  /** Fetch the log around the first error for up to three failing jobs. One extra request per job. */
   includeLogs?: boolean;
-  /** Lines of log tail kept per job (10..200). */
+  /** Lines of log kept per job, centred on the first error (10..200). */
   logLines?: number;
 }
 
@@ -258,7 +259,7 @@ async function ghDownload(
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
-    "User-Agent": "mcp-repo-devtools/0.2.0",
+    "User-Agent": USER_AGENT,
   };
   if (token) {
     headers["Authorization"] = "Bearer " + token;
@@ -323,7 +324,7 @@ async function jobLogTail(
   if (text.length === 0) {
     return "";
   }
-  return tailLines(redact(stripLogPrefixes(text)), lines);
+  return errorWindow(redact(stripLogPrefixes(text)), lines);
 }
 
 /** List failing checks for a ref, with failed step names and optionally a log tail. */
@@ -569,7 +570,7 @@ async function ghSend<T>(
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
-    "User-Agent": "mcp-repo-devtools/0.2.0",
+    "User-Agent": USER_AGENT,
     "Content-Type": "application/json",
   };
   if (token) {

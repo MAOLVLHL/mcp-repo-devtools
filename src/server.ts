@@ -5,8 +5,6 @@
  * 200 lines / 64 KB.
  */
 
-import { readFileSync } from "node:fs";
-
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -39,16 +37,8 @@ import {
   prContextOutput,
 } from "./tool-metadata.js";
 
-/**
- * Read from package.json rather than a literal: a second copy of the version
- * drifts the first time someone forgets to bump both.
- */
-const PACKAGE = JSON.parse(
-  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-) as { version: string };
-
-export const VERSION: string = PACKAGE.version;
-export const SERVER_NAME = "mcp-repo-devtools";
+export { SERVER_NAME, VERSION } from "./version.js";
+import { SERVER_NAME, VERSION } from "./version.js";
 
 export interface ServerOptions {
   allowedRoots?: string[];
@@ -246,7 +236,7 @@ function formatCi(report: Awaited<ReturnType<typeof ciFailures>>, repo: string):
       lines.push("  log unavailable: " + failure.logNote);
     }
     if (failure.logTail) {
-      lines.push("  log tail:");
+      lines.push("  log:");
       for (const line of failure.logTail.split("\n")) {
         lines.push("    " + line);
       }
@@ -476,14 +466,14 @@ export function createServer(options: ServerOptions = {}): McpServer {
         include_logs: z
           .boolean()
           .default(false)
-          .describe("Fetch the log tail of up to three failing jobs (needs GITHUB_TOKEN)"),
+          .describe("Fetch the log around the first error for up to three failing jobs (needs GITHUB_TOKEN)"),
         log_lines: z
           .number()
           .int()
           .min(10)
           .max(200)
           .default(40)
-          .describe("Lines of log tail kept per job"),
+          .describe("Lines of log kept per job, centred on the first error"),
       },
       outputSchema: ciFailuresOutput,
       annotations: REMOTE_READ,

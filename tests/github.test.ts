@@ -272,7 +272,7 @@ const longLog = Array.from({ length: 60 }, (_, index) => "line " + String(index)
   "AssertionError: boom",
 ]).join("\n");
 
-test("ciFailures fetches the failing job log tail when includeLogs is on", async () => {
+test("ciFailures fetches the failing job log when includeLogs is on", async () => {
   const archive = makeZip([{ name: "1_checkout.txt", content: "checkout ok" }, { name: "2_pytest.txt", content: longLog }]);
   const calls = stubFetch([
     { match: /\/commits\/main\/check-runs/, body: failingCheckRuns },
@@ -289,7 +289,10 @@ test("ciFailures fetches the failing job log tail when includeLogs is on", async
 
   const tail = report.failures[0]?.logTail ?? "";
   assert.match(tail, /AssertionError: boom/);
-  assert.match(tail, /earlier lines omitted/);
+  // The marker is the last line of a 62-line log, so the window reaches back
+  // instead of taking the tail; 20 lines of it are kept, 42 are counted out.
+  assert.match(tail, /…\(42 earlier lines omitted\)/);
+  assert.equal(/later lines omitted/.test(tail), false);
   assert.equal(report.failures[0]?.logNote, "");
   assert.equal(calls[2]?.headers["Authorization"], "Bearer ghp_test");
   assert.equal(calls[3]?.headers["Authorization"], undefined);

@@ -95,6 +95,51 @@ export function tailLines(text: string, maxLines: number): string {
   return "…(" + omitted + " earlier lines omitted)\n" + lines.slice(omitted).join("\n");
 }
 
+/**
+ * Lines a person scrolls to in a CI log. Narrow on purpose: a line that merely
+ * contains the word "error" in a path is not where the failure is.
+ */
+const ERROR_LINE =
+  /(?:\bAssertionError\b|\b\w*Error\b:|\b\w*Exception\b:|Traceback \(most recent call last\)|^FAILED\b|^panic:|^fatal:|##\[error\])/;
+
+/**
+ * Keep the window around the first line that looks like a failure, not the last
+ * N lines. The end of a job log is mostly teardown — "process completed with
+ * exit code 1" and a cleanup step — while the assertion that explains it sits
+ * hundreds of lines higher, where a tail cannot reach it.
+ *
+ * When no marker is found this is exactly `tailLines`, so a log that is only
+ * noise degrades to the behaviour it had before.
+ */
+export function errorWindow(text: string, maxLines: number, lookback = 5): string {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
+  if (normalized.length === 0) {
+    return "";
+  }
+  const lines = normalized.split("\n");
+  const index = lines.findIndex((line) => ERROR_LINE.test(line));
+  if (index === -1) {
+    return tailLines(normalized, maxLines);
+  }
+  // Spend most of the budget on what follows the marker — a stack trace is the
+  // part that says why — and keep `lookback` lines of run-up before it.
+  const after = Math.max(1, maxLines - lookback - 1);
+  const end = Math.min(lines.length, index + 1 + after);
+  const start = Math.max(0, end - maxLines);
+  if (start === 0 && end === lines.length) {
+    return normalized;
+  }
+  const kept: string[] = [];
+  if (start > 0) {
+    kept.push("…(" + start + " earlier lines omitted)");
+  }
+  kept.push(...lines.slice(start, end));
+  if (end < lines.length) {
+    kept.push("…(" + (lines.length - end) + " later lines omitted)");
+  }
+  return kept.join("\n");
+}
+
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
   [/\bghp_[A-Za-z0-9]{20,}\b/g, "ghp_***redacted***"],
   [/\bgho_[A-Za-z0-9]{20,}\b/g, "gho_***redacted***"],
