@@ -1,0 +1,32 @@
+{
+  "id": "report-dates-drift-by-timezone",
+  "symptom": "tests/test_report.py::test_generated_at fails: the timestamp is two hours off in CI.",
+  "expected_commit": 3,
+  "commits": [
+    {
+      "message": "feat: render a report header",
+      "files": {
+        "src/report.py": "from datetime import datetime, timezone\n\n\ndef header():\n    return \"generated \" + datetime.now(timezone.utc).isoformat()\n",
+        "tests/test_report.py": "from src.report import header\n\n\ndef test_generated_at():\n    assert header().startswith(\"generated \") and header().endswith(\"+00:00\")\n"
+      }
+    },
+    {
+      "message": "feat: add the report body",
+      "files": {
+        "src/report.py": "from datetime import datetime, timezone\n\n\ndef header():\n    return \"generated \" + datetime.now(timezone.utc).isoformat()\n\n\ndef body(rows):\n    return \"\\n\".join(str(row) for row in rows)\n"
+      }
+    },
+    {
+      "message": "chore: show local time in the header",
+      "files": {
+        "src/report.py": "from datetime import datetime\n\n\ndef header():\n    return \"generated \" + datetime.now().isoformat()\n\n\ndef body(rows):\n    return \"\\n\".join(str(row) for row in rows)\n"
+      }
+    },
+    {
+      "message": "docs: note the report format",
+      "files": {
+        "docs/report.md": "# Report\n\nThe header carries the generation time.\n"
+      }
+    }
+  ]
+}

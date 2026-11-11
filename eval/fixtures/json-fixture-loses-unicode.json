@@ -1,0 +1,26 @@
+{
+  "id": "json-fixture-loses-unicode",
+  "symptom": "tests/test_snapshot.py::test_unicode fails: the snapshot contains \\u00e9 instead of é.",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: write JSON snapshots",
+      "files": {
+        "src/snapshot.py": "import json\n\n\ndef dump(value):\n    return json.dumps(value, ensure_ascii=False)\n",
+        "tests/test_snapshot.py": "from src.snapshot import dump\n\n\ndef test_unicode():\n    assert dump({\"name\": \"caf\\u00e9\"}) == '{\"name\": \"caf\\u00e9\"}'\n"
+      }
+    },
+    {
+      "message": "fix: escape non-ascii for safety",
+      "files": {
+        "src/snapshot.py": "import json\n\n\ndef dump(value):\n    return json.dumps(value, ensure_ascii=True)\n"
+      }
+    },
+    {
+      "message": "test: cover nested values",
+      "files": {
+        "tests/test_snapshot.py": "from src.snapshot import dump\n\n\ndef test_unicode():\n    assert dump({\"name\": \"caf\\u00e9\"}) == '{\"name\": \"caf\\u00e9\"}'\n\n\ndef test_nested():\n    assert dump({\"a\": [1, 2]}) == '{\"a\": [1, 2]}'\n"
+      }
+    }
+  ]
+}

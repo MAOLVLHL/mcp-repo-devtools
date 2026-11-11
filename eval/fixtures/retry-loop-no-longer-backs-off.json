@@ -1,0 +1,26 @@
+{
+  "id": "retry-loop-no-longer-backs-off",
+  "symptom": "tests/test_retry.py::test_sleep_between_attempts fails: attempts run back to back with no delay.",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: retry transient failures",
+      "files": {
+        "src/retry.py": "import time\n\n\ndef run(fn, attempts=3, delay=0.01):\n    for attempt in range(attempts):\n        try:\n            return fn()\n        except OSError:\n            if attempt == attempts - 1:\n                raise\n            time.sleep(delay)\n",
+        "tests/test_retry.py": "import time\n\nfrom src.retry import run\n\n\ndef test_sleep_between_attempts():\n    calls = []\n    def flaky():\n        calls.append(time.monotonic())\n        raise OSError(\"nope\")\n    try:\n        run(flaky, attempts=2, delay=0.05)\n    except OSError:\n        pass\n    assert calls[1] - calls[0] >= 0.04\n"
+      }
+    },
+    {
+      "message": "perf: drop the sleep between attempts",
+      "files": {
+        "src/retry.py": "def run(fn, attempts=3, delay=0.01):\n    for attempt in range(attempts):\n        try:\n            return fn()\n        except OSError:\n            if attempt == attempts - 1:\n                raise\n"
+      }
+    },
+    {
+      "message": "test: assert the attempt count",
+      "files": {
+        "tests/test_retry.py": "import time\n\nfrom src.retry import run\n\n\ndef test_sleep_between_attempts():\n    calls = []\n    def flaky():\n        calls.append(time.monotonic())\n        raise OSError(\"nope\")\n    try:\n        run(flaky, attempts=2, delay=0.05)\n    except OSError:\n        pass\n    assert calls[1] - calls[0] >= 0.04\n\n\ndef test_attempt_count():\n    calls = []\n    def flaky():\n        calls.append(1)\n        raise OSError(\"nope\")\n    try:\n        run(flaky, attempts=2, delay=0)\n    except OSError:\n        pass\n    assert len(calls) == 2\n"
+      }
+    }
+  ]
+}

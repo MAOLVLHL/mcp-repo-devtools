@@ -1,0 +1,26 @@
+{
+  "id": "flag-parser-rejects-one",
+  "symptom": "tests/test_config.py::test_enabled fails: ENABLED=1 no longer turns the feature on.",
+  "expected_commit": 3,
+  "commits": [
+    {
+      "message": "feat: parse boolean env vars",
+      "files": {
+        "src/config.py": "def enabled(value):\n    return str(value).strip().lower() in {\"1\", \"true\", \"yes\", \"on\"}\n",
+        "tests/test_config.py": "from src.config import enabled\n\n\ndef test_enabled():\n    assert enabled(\"1\") is True and enabled(\"0\") is False\n"
+      }
+    },
+    {
+      "message": "feat: add a timeout setting",
+      "files": {
+        "src/config.py": "def enabled(value):\n    return str(value).strip().lower() in {\"1\", \"true\", \"yes\", \"on\"}\n\n\ndef timeout(value, default=30):\n    return int(value) if str(value).isdigit() else default\n"
+      }
+    },
+    {
+      "message": "refactor: accept only true and false",
+      "files": {
+        "src/config.py": "def enabled(value):\n    return str(value).strip().lower() == \"true\"\n\n\ndef timeout(value, default=30):\n    return int(value) if str(value).isdigit() else default\n"
+      }
+    }
+  ]
+}

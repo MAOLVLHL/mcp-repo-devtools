@@ -1,0 +1,26 @@
+{
+  "id": "float-equality-breaks-total",
+  "symptom": "tests/test_money.py::test_total fails: 0.1 + 0.2 no longer equals 0.3.",
+  "expected_commit": 3,
+  "commits": [
+    {
+      "message": "feat: add money helpers",
+      "files": {
+        "src/money.py": "import math\n\n\ndef total(values):\n    return round(math.fsum(values), 2)\n\n\ndef is_zero(value):\n    return math.isclose(value, 0.0, abs_tol=1e-9)\n",
+        "tests/test_money.py": "from src.money import total\n\n\ndef test_total():\n    assert total([0.1, 0.2]) == 0.3\n"
+      }
+    },
+    {
+      "message": "feat: expose a formatter",
+      "files": {
+        "src/money.py": "import math\n\n\ndef total(values):\n    return round(math.fsum(values), 2)\n\n\ndef is_zero(value):\n    return math.isclose(value, 0.0, abs_tol=1e-9)\n\n\ndef format_money(value):\n    return f\"{value:.2f}\"\n"
+      }
+    },
+    {
+      "message": "refactor: drop the rounding from total",
+      "files": {
+        "src/money.py": "import math\n\n\ndef total(values):\n    return math.fsum(values)\n\n\ndef is_zero(value):\n    return math.isclose(value, 0.0, abs_tol=1e-9)\n\n\ndef format_money(value):\n    return f\"{value:.2f}\"\n"
+      }
+    }
+  ]
+}
