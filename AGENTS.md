@@ -9,9 +9,11 @@ install the server; this file is for the ones who change it.
 ```bash
 npm install
 npm run build                 # tsc -> dist/ ; the tests import from src, the bin from dist
-npm test                      # build + node:test (124 tests) — run it before every commit
+npm test                      # build + node:test (135 tests) — run it before every commit
 npm run snapshot              # rewrite tests/fixtures/tool-surface.json after a surface change
-npm run eval                  # ten fixtures through the scripted oracle, offline, must be 10/10
+npm run eval                  # thirty fixtures through the scripted oracle, offline, must be 30/30
+npm run eval:baseline         # the same cases through the raw git arm, must be 30/30
+npm run eval:check            # this run against eval/baseline.json, per fixture
 npm run demo:agent            # the reference loop end to end, offline, no key
 node --import tsx --test tests/<file>.test.ts   # one file while iterating
 ```
@@ -36,6 +38,11 @@ the suite fails with `spawnSync git ENOENT` when it is missing.
    `clip()` (or `redactDeep()` for structured content) before it reaches the model.
 6. **The eval is allowed to say the server lost.** Do not tune fixtures or scoring to
    make the six-tool arm win; publish the number and explain it.
+7. **A fixture is green at the culprit's parent and red at HEAD.** If the test suite
+   passes on both sides, the fixture grades nothing — fix it before it reaches a run.
+8. **The baseline is recorded, not lowered.** Adding a fixture or changing the model means
+   re-recording `eval/baseline.json` with three runs and `npm run eval:record`; a
+   regression it reports is a finding, and `--max-regressions` is not the fix.
 
 ## Where things live
 

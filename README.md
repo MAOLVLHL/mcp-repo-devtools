@@ -246,48 +246,53 @@ latency trade against each other, and the table only measures one side. Full met
 ## An eval that can fail me
 
 Most tool READMEs quote a benchmark their tool wins. This one runs mine against the boring
-alternative, and **the boring alternative wins**. That is the point.
+alternative, and **the boring alternative wins on cost** — same score, half the tokens. That
+is the point.
 
-[`eval/`](eval/) measures answers, not bytes: ten offline fixtures, each a real repository
+[`eval/`](eval/) measures answers, not bytes: thirty offline fixtures, each a real repository
 baked from a few commits with one regression in it, the failing test as a user would report
 it, and the sha that introduced it. Both arms run the same loop, the same prompt and the
 same 8-turn cap; the only variable is the tool surface — the six MCP tools, or one raw
 `git` tool that returns its output verbatim.
 
 ```bash
-npm run eval             # scripted oracle, offline, must be 10/10
+npm run eval             # scripted oracle, offline, must be 30/30
 npm run eval:baseline    # the same cases through the raw git tool
+npm run eval:check       # the run above, per fixture, against eval/baseline.json
 OPENAI_API_KEY=… npm run eval -- --provider openai   # a real model, real numbers
 ```
 
 Scored from the trajectory, not a second opinion: success@1 (does the report name the
 culprit commit), turns, tool calls, duplicate calls, tokens, and read-only violations. No
 judge model, so the number cannot drift with the grader. The scripted oracle run must stay
-10/10 — it proves fixtures, tool names and grader agree before a token is spent.
+30/30 — it proves fixtures, tool names and grader agree before a token is spent.
 
-Three runs per arm, 2026-11-11, `deepseek-flash` at temperature 0, turn cap 8, ten
-fixtures — 30 cases per arm:
+Three runs per arm, 2026-11-11, `deepseek-flash` at temperature 0, turn cap 8, thirty
+fixtures — 90 cases per arm:
 
 | | six MCP tools | one raw `git` tool |
 | --- | --- | --- |
-| success@1 | 26/30 (87%) | **30/30 (100%)** |
-| mean turns | 5.3 | 5.0 |
-| mean tool calls | 7.7 | 8.7 |
-| mean tokens per case | 16,492 | **8,043** |
+| success@1 | 90/90 (100%) | 90/90 (100%) |
+| mean turns | 4.59 | 4.08 |
+| mean tool calls | 6.72 | 6.71 |
+| mean tokens per case | 12,893 | **5,851** |
 
-On "which commit introduced this regression", one raw command beats six typed tools at half
-the tokens, and only the typed arm has cases it fails. Two effects explain most of it. The
-six schemas cost about 1,073 tokens on every turn (~5.4k per run) before a single result is
-read. And this task is the one `git` was built for — `log -p`, `show` and `blame` are one
-call each, while a typed surface makes the model ask in the vocabulary this server chose,
-and the failures we saw were vocabulary mismatches rather than wrong reasoning.
+On "which commit introduced this regression" both arms name the right commit every time, and
+one raw command does it for 2.2× fewer tokens. The six schemas cost about 1,073 tokens on
+every turn before a single result is read; the raw arm pays that once for one tool. And this
+is the task `git` was built for — `log -p` and `show` are one call each — so a typed surface
+has to earn its overhead somewhere else.
 
 An eval you are willing to lose is the only kind worth quoting, and this one has already
-paid for itself four times:
+paid for itself five times:
 
-- it caught a **broken fixture** — the model found that the "culprit" commit could not
-  fail the failing test, and was right; the oracle could never have caught it, because it
-  cites the expected sha by construction;
+- it **caught the harness being unfair to its own author**: the first table read 87% for the
+  typed arm because the task demanded a full sha while `git_log` prints seven characters, so
+  models padded the right commit with 33 invented ones. The prompt was wrong, not the
+  models; fixing it moved that arm from 87% to 100% and left the token gap untouched;
+- it caught a **broken fixture** — the "culprit" commit could not fail the failing test, and
+  the model said so; the oracle could never have caught it, because it cites the expected sha
+  by construction;
 - it caught a **loop bug** — a reply with no text was scored as an answer, so a model that
   stopped mid-thought looked wrong when the harness was wrong;
 - it put a number on the **schema tax**, which decides whether a seventh tool is worth its
@@ -295,7 +300,7 @@ paid for itself four times:
 - it says where the server *should* win and the baseline cannot follow: `gh_ci_failures`,
   `gh_pr_context` and `gh_issue_search` reach GitHub state that a git-only tool cannot.
 
-Method, the ten regressions, the per-fixture table and the caveats:
+Method, the thirty regressions, the per-fixture table and the caveats:
 [`docs/eval.md`](docs/eval.md).
 
 ## Safety model
@@ -336,12 +341,13 @@ model, including what these controls do **not** cover, is in
 ```bash
 npm install
 npm run build        # tsc -> dist/
-npm test             # build + node:test, 124 tests
+npm test             # build + node:test, 135 tests
 npm run snapshot     # rewrite tests/fixtures/tool-surface.json after a surface change
 npm run bench        # the measurement above (needs a checkout, and a token for GitHub rows)
 npm run inspect      # MCP Inspector against the built server
 npm run demo:agent   # the reference loop, offline, no key
-npm run eval         # the ten fixtures through the oracle, offline
+npm run eval         # the thirty fixtures through the oracle, offline
+npm run eval:check   # the gate: no fixture the recorded baseline solved got worse
 ```
 
 The tool surface is a contract: `tests/contract.test.ts` fails if a tool appears,

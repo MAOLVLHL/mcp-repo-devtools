@@ -6,7 +6,7 @@ This directory is the second question.
 
 ## What a case is
 
-Ten fixtures in [`fixtures/`](fixtures/), each a JSON file with three things:
+Thirty fixtures in [`fixtures/`](fixtures/), each a JSON file with three things:
 
 - `commits` — the repository, baked commit by commit with fixed dates, so every build
   produces the same shas;
@@ -14,14 +14,51 @@ Ten fixtures in [`fixtures/`](fixtures/), each a JSON file with three things:
 - `expected_commit` — the 1-based index of the commit that actually introduced the
   regression.
 
-The regressions are ordinary ones: a default dropped from a dict lookup, an off-by-one
-in a paginator, a timestamp switched from UTC to local time, a cache key that lost the
-tenant, a sleep removed from a retry loop, a query that lost its filter, a float compared
-with `==`, `ensure_ascii` flipped back on, a boolean parser narrowed to `"true"`, and a
-sort made case-insensitive.
+Every fixture carries a real, runnable test suite: the repository is green at the culprit's
+parent and red at HEAD. That property is checked, not assumed — a fixture whose test never
+fails is a fixture that grades nothing, and `float-equality-breaks-total` was exactly that
+until a model refused to answer it (see below).
 
-Nothing touches the network. A case builds in milliseconds, which is what makes it
-cheap enough to run on every commit.
+Nothing touches the network. A case builds in milliseconds, which is what makes it cheap
+enough to run on every commit.
+
+### The thirty regressions
+
+| Fixture | What the culprit broke |
+| --- | --- |
+| `cache-key-drops-the-tenant` | the cache key lost the tenant, so two tenants read each other's rows |
+| `csv-export-quotes-nothing` | a hand-built `join` replaced the csv module, so commas are no longer quoted |
+| `flag-parser-rejects-one` | a boolean parser narrowed to `true`/`false`, so `ENABLED=1` stops working |
+| `float-equality-breaks-total` | rounding dropped from a money total, so `0.1 + 0.2` no longer equals `0.3` |
+| `json-fixture-loses-unicode` | `ensure_ascii` turned back on, so the snapshot holds `\u00e9` instead of `é` |
+| `pagination-repeats-first-page` | the page number used as an offset, so page 2 repeats page 1 |
+| `query-loses-the-tenant-filter` | filtering moved out of SQL and into Python, dropping the tenant predicate |
+| `refresh-token-keyerror` | the token read directly from a response that may omit it |
+| `report-dates-drift-by-timezone` | a timestamp switched from UTC to local time |
+| `retry-loop-no-longer-backs-off` | the sleep removed from a retry loop |
+| `sort-order-depends-on-locale` | a sort made case-insensitive, so `Banana` now sorts before `apple` |
+| `split-drops-the-remainder-cent` | shares computed in one pass, so a split of 100 into three parts sums to 99 |
+| `slug-regex-consumes-underscore` | the slug character class simplified, so `_` becomes `-` |
+| `page-slice-off-by-one` | a "never return more than a page" guard, so the second page loses its last row |
+| `dedupe-keeps-first-not-last` | ids skipped once seen, so the first write wins instead of the last |
+| `shared-default-list-accumulates` | a mutable default argument, so two calls share one list |
+| `frozen-dataclass-loses-hash` | `frozen=True` dropped, so values are no longer hashable |
+| `cursor-skips-the-boundary-row` | a cursor guard that drops the row sitting exactly on the boundary |
+| `rate-limit-window-is-closed` | a half-open window turned closed, so a request on the boundary counts |
+| `unicode-nfc-compare-dropped` | normalisation removed, so two spellings of the same name stop comparing equal |
+| `float-cents-truncated` | the round before the cast dropped, so `19.99` becomes `1998` cents |
+| `timeout-unit-swapped` | a timeout in seconds passed where milliseconds are expected |
+| `deep-merge-became-shallow` | a spread instead of a merge, so overriding one key drops its siblings |
+| `sort-mutates-the-callers-array` | an in-place sort, so the caller's array is reordered |
+| `async-cache-races-on-miss` | the value awaited before it is cached, so two concurrent callers both miss |
+| `header-lookup-lowercased-twice` | a lower-case name looked up directly in a case-sensitive map |
+| `config-read-at-import-time` | configuration built once at import, so a later `process.env` change is ignored |
+| `email-pattern-loses-its-anchor` | the pattern allowed to match anywhere, so trailing text is accepted |
+| `clamp-arguments-swapped` | `min` and `max` folded in the wrong order, so an above-ceiling value lands below the floor |
+| `parse-int-accepts-trailing-junk` | `parseInt` used for the cast, so port `8080abc` is accepted |
+
+Python fixtures run under `pytest`, JavaScript fixtures under `node --test`; the language
+is a property of the repository, not of the grader.
 
 ## The two arms
 
@@ -60,21 +97,27 @@ run can report more turns than tool calls suggest.
 Grading is done from the trajectory the loop returns — no second model, no judge, no
 rubric drift. The same run and the same fixture always produce the same score.
 
+The tools print abbreviated shas (`git log --pretty=%h`), and the task asks for the sha
+"exactly as the history printed it". Any prefix of the culprit counts. A short sha padded
+with invented characters does not: it is a false identifier, and the grader treats it as
+one, which is the same rule the server applies to a claim it cannot verify.
+
 ## Running it
 
 ```bash
 npm run build
 
-npm run eval                      # scripted oracle: must be 10/10
+npm run eval                      # scripted oracle: must be 30/30
 npm run eval:baseline             # the same cases through the raw git tool
+npm run eval:check                # that run, compared against eval/baseline.json
 OPENAI_API_KEY=… npm run eval -- --provider openai
 OPENAI_API_KEY=… OPENAI_MODEL=gpt-4o-mini npm run eval -- --provider openai --json
 ```
 
 The scripted provider is an oracle: it replays `git log`, the one diff that matters, and
 a report that cites the expected sha. It proves the fixtures, the tool names, the loop
-and the grader agree — if the harness scores 9/10, the harness is broken, not the model.
-That is the run CI should enforce.
+and the grader agree — if the harness scores 29/30, the harness is broken, not the model.
+That is the run CI enforces.
 
 The `openai` provider is a real model behind any OpenAI-compatible endpoint. Its numbers
 are the ones worth quoting, and they are only meaningful next to the arm, the model name
@@ -82,82 +125,98 @@ and the turn cap.
 
 A case that raises — a dead endpoint, a rejected key, a provider that answers 502 — is
 printed as `ERROR` and the suite keeps going, because one bad response should not throw
-away nine good ones. The CLI then exits 1 and lists the cases that did not finish, so a
-half-run can never be mistaken for a low score.
+away twenty-nine good ones. The CLI then exits 1 and lists the cases that did not finish,
+so a half-run can never be mistaken for a low score.
 
-## A real model, measured — and it prefers the baseline
+## A real model, on the thirty fixtures
 
-A benchmark that cannot fail its author is a marketing table. This one is built so it can:
-one task, two arms, a deterministic grader, and neither arm privileged. The first real
-model to run it picked the boring arm and won, and the numbers below are the ones it
-produced. They are published unedited, because a number you would not quote when it goes
-against you is not a measurement.
+Three runs per arm, 2026-11-11, `deepseek-flash` at temperature 0, turn cap 8 — 90 cases per
+arm:
 
-2026-11-11, `deepseek-flash` behind an OpenAI-compatible endpoint, temperature 0,
-`max_tokens` 1500 per turn, 8-turn cap, ten fixtures, three runs per arm. Thirty cases
-per arm, same fixtures, same task text, same loop.
-
-| Run | `mcp` | `baseline` |
+| | six MCP tools | one raw `git` tool |
 | --- | --- | --- |
-| 1 | 8/10 | 10/10 |
-| 2 | 10/10 | 10/10 |
-| 3 | 8/10 | 10/10 |
-| **total** | **26/30 (87%)** | **30/30 (100%)** |
-
-| | `mcp` | `baseline` |
-| --- | --- | --- |
-| mean turns | 5.30 | 5.03 |
-| mean tool calls | 7.67 | 8.70 |
-| mean tokens per case | 16,492 | **8,043** |
-| duplicate calls | 0.5% | 0% |
+| success@1 | 90/90 (100%) | 90/90 (100%) |
+| mean turns | 4.59 | 4.08 |
+| mean tool calls | 6.72 | 6.71 |
+| mean tokens per case | 12,893 | **5,851** |
+| duplicate calls | 0% | 0.3% |
 | read-only violations | 0 | 0 |
 
-Only four fixtures ever failed in the `mcp` arm, each twice out of three runs:
-`flag-parser-rejects-one`, `float-equality-breaks-total`, `refresh-token-keyerror`,
-`sort-order-depends-on-locale`. The baseline passed all ten, three times.
+Both arms solve every case, so on this task the typed surface buys correctness it already
+had and costs 2.2× the tokens. The gap is mostly the schema tax: six tool schemas are about
+4,290 bytes, roughly 1,073 tokens on every turn before a result is read, and the raw arm
+pays it once for a single tool.
 
-The result goes against the server, and it is published that way on purpose — a tool
-README that only quotes wins teaches you nothing about when to reach for the tool. Two
-effects account for most of the gap:
+### The first number was wrong, and that is the finding
 
-- **Schema tax.** The six tool schemas serialise to about 4,290 bytes, roughly 1,070
-  tokens, and they are re-sent on every turn — around 5,400 tokens before the model reads a
-  single result. The baseline sends one small schema.
-- **Task shape.** "Find the commit that introduced this regression" is the job `git` was
-  designed for: `log -p`, `show`, `blame` are one call each. A typed surface makes the
-  model ask the question in the vocabulary this server chose, and the failure modes we saw
-  were vocabulary mismatches, not wrong reasoning.
+The first version of this table read 87% for the typed arm, and the loss looked like
+vocabulary mismatch. It was not. The task prompt asked for "the full commit sha" while
+`git_log` prints `%h` — the typed arm could not produce a full sha at all, so a model that
+had identified the right commit copied its seven characters and invented thirty-three more.
+Every one of those failures was a right commit behind a fabricated identifier, and the raw
+arm was unaffected because a shell can ask git for `%H`.
 
-What would change the verdict, and is not measured here: a task where the raw command is
-the wrong shape — CI failures across jobs, PR review context, issue search — where the
-baseline cannot go at all because it only speaks git. A seventh typed tool is a bet that
-this is where the value is; the eval above is the reason to make that bet deliberately
-rather than by default.
+The fix belongs in the task, not the grader: the prompt now asks for the sha "exactly as the
+history printed it", and a padded sha is still scored as a fabrication
+(`tests/eval-grade.test.ts` pins both halves). The typed arm moved from 87% to 100% — better
+for the arm, and a reminder that a harness can lose a comparison on its own author's behalf.
 
-### What the first run already paid for
+## The gate: a recorded run, not a target
 
-Four findings, in the order they arrived. None of them would have surfaced from a
-benchmark that only measured bytes saved.
+A single model run is a coin flip, so it cannot be a threshold. What can be a threshold is
+the *set of fixtures that run solved*: `eval/baseline.json` records, per fixture, whether
+a majority of three runs got it right, together with the model, the arm and the date.
 
-1. **A broken fixture, found by the model.** In `float-equality-breaks-total` the commit
-   labelled as the culprit changed `is_zero`, which the failing test never calls — no
-   commit in that repository could have made the test fail. The model said so, every run,
-   and refused to cite a sha. It was right; the fixture was wrong. The scripted oracle
-   could not catch it, because it cites `expected_commit` by construction.
-2. **A loop bug, found by a tie.** One arm answered with an empty final message, which the
-   loop scored as an answer. A silent model was being recorded as a wrong model. The loop
-   now asks once more (at most twice) before silence counts.
-3. **The price of the surface.** Six schemas cost about 1,070 tokens on every turn, roughly
-   5,400 tokens per run, before any result is read. That is now a number, not a worry, and
-   it is the first thing to check before adding a seventh tool.
-4. **The boundary that matters.** The baseline wins at git archaeology and cannot follow
-   into GitHub state at all. The honest next move is to compete where the baseline cannot
-   go — CI failures across jobs, PR review context — not to add another way to read a
-   diff.
+```bash
+npm run eval:check                                    # scripted run against the record
+node dist/eval/cli.js --provider openai --check eval/baseline.json
+```
+
+The comparison prints the gate, the rate now against the rate recorded, and the three
+lists that matter:
+
+```text
+gate: FAIL  ·  deepseek-official/deepseek-flash (mcp, 3 runs, 2026-11-11)
+measured 96.7% now vs 100.0% recorded  ·  1 regression(s), 0 recovered, 0 unmeasured
+regressed: sort-mutates-the-callers-array
+the recorded baseline solved 1 of these and this run did not; raise --max-regressions only on purpose
+```
+
+(That output is an illustration — the recorded baseline is 30/30, so any single lost fixture
+prints exactly this.)
+
+- **A regression** — recorded as passing, failing now — fails the run. This is the whole
+  point of a per-fixture record: an average hides a swap, one fixture recovered and another
+  lost still reads 86.7%, and the summary alone would call it fine.
+- **A recovery** — recorded as failing, passing now — is printed and never fails. A model
+  getting better is not an incident.
+- **An unmeasured fixture** — one the record does not know — fails the run until someone
+  re-records. Otherwise adding fixtures would silently narrow the gate to the old ones.
+- `--max-regressions N` exists for a deliberate, reviewed trade. Raising it is an
+  admission, not a fix, and the gate says so in its own output.
+
+Re-recording is honest when the model or the fixtures legitimately changed:
+
+```bash
+# three runs of the same arm, then a majority verdict per fixture
+node dist/eval/cli.js --provider openai --json > run-1.json   # …2, 3
+npm run eval:record -- eval/baseline.json run-1.json run-2.json run-3.json
+```
+
+The recorder refuses to guess: a fixture missing from any of the runs is an error, not a
+fail, because a gap in the record is a gap in the gate.
+
+### In CI
+
+`ci.yml` runs both arms through the scripted oracle and then `eval:check`, so a broken
+fixture or a drifted harness fails a pull request without a model or a secret.
+`eval-model.yml` is the measured half: `workflow_dispatch`, a repository secret
+`OPENAI_API_KEY`, variables `OPENAI_BASE_URL` and `OPENAI_MODEL`, and the same
+`--check`. It fails the workflow on a regression and uploads the JSON either way.
 
 ## What it does not measure
 
-- **General coding ability.** One narrow task, ten fixtures. A model that aces this may
+- **General coding ability.** One narrow task, thirty fixtures. A model that aces this may
   still be useless at everything else.
 - **Latency.** Turns and tokens are counted; wall-clock time is not, because the fixture
   build and the provider are both local.
@@ -167,14 +226,18 @@ benchmark that only measured bytes saved.
   failure. Real incidents are not.
 - **The GitHub tools.** Every fixture is a local git repository, so `gh_ci_failures`,
   `gh_pr_context` and `gh_issue_search` — the tools the baseline cannot reach — are never
-  scored. A tool surface that only pays off on the GitHub side would score exactly like
-  the table above.
+  scored. A tool surface that only pays off on the GitHub side would score exactly like the
+  tables above.
 
 ## Adding a fixture
 
 1. Write the commits so that exactly one of them changes behaviour the symptom describes.
-2. Put the failing test's message in `symptom`, including the assertion text when it
+2. Make the test suite actually catch it: green at the culprit's parent, red at HEAD. If
+   the tests pass on both sides, the fixture grades nothing.
+3. Put the failing test's message in `symptom`, including the assertion text when it
    helps.
-3. Set `expected_commit` to that commit's 1-based position.
-4. Run `npm run eval`; the oracle must stay 10/10 (or 11/11).
-5. Add a line to this file saying what the regression is.
+4. Set `expected_commit` to that commit's 1-based position.
+5. Run `npm run eval`; the oracle must stay 30/30 (or 31/31).
+6. Add a line to the table above saying what the regression is.
+7. Re-record `eval/baseline.json`, or `eval:check` will (correctly) fail on the new
+   fixture as unmeasured.

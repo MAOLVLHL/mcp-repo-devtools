@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+### Added
+
+- The eval now has thirty fixtures, up from ten: twelve Python and eight JavaScript,
+  covering money rounded wrong, an off-by-one paginator, a mutable default argument, a
+  cache key that lost the tenant, an in-place sort, a race on a cache miss, and twenty-two
+  more. Each one ships a runnable test suite that is green at the culprit's parent and red
+  at HEAD, so a fixture that grades nothing fails the harness rather than the model.
+- `eval/baseline.json` and `src/eval/baseline.ts`: a recorded run as a per-fixture gate.
+  `success@1` is a coin flip on one run and an average hides a swap; a fixture the record
+  solved may not stop being solved without a person saying so.
+- `--check <file>` and `--max-regressions <n>` on the eval CLI, plus `npm run eval:check`.
+  The comparison prints the rate now against the rate recorded, the regressions, the
+  recoveries, and the fixtures the record does not know — the last two for information,
+  the first as the failure.
+- `npm run eval:record` (`scripts/record-baseline.mjs`): three runs in, one majority
+  verdict per fixture out. It refuses to guess about a fixture some run never reached.
+- `tests/eval-baseline.test.ts`: the parse rejects a record that cannot gate, a regression
+  fails, a recovery does not, an unmeasured fixture fails until it is recorded, and
+  `--max-regressions` tolerates exactly what it is told to.
+- `ci.yml` grows an `eval` job: both arms through the scripted oracle (30/30 each) and then
+  `eval:check`, so a broken fixture or a drifted harness fails a pull request with no model
+  and no secret.
+- `.github/workflows/eval-model.yml`: `workflow_dispatch` for the measured half — the same
+  `--check` against a real model, failing the workflow on a regression and uploading the
+  JSON either way.
+
+### Fixed
+
+- The eval task asked for "the full commit sha" while `git_log` prints `%h`, so the typed
+  arm was scored on an identifier its own tools could not produce: a model that found the
+  right commit padded the seven characters it had, and every padded answer counted as a
+  failure. The prompt now asks for the sha "exactly as the history printed it"; the grader
+  still treats a padded sha as a fabrication (`tests/eval-grade.test.ts`), because an
+  invented identifier is not a citation. With the fix the typed arm scores 90/90 over three
+  runs instead of 87%.
+
+### Changed
+
+- The measured table is re-recorded: thirty fixtures, three runs per arm, both arms 90/90,
+  and the typed arm at 12,893 mean tokens against 5,851 for one raw `git` tool. The earlier
+  87% figure was an artifact of the prompt above, not a property of the tool surface.
+
+
 ## 0.3.0 - 2026-11-11
 
 ### Added
