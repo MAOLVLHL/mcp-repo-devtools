@@ -1,0 +1,45 @@
+{
+  "id": "ci-log-backoff-multiplied-in-milliseconds",
+  "kind": "github",
+  "symptom": "The retry queue now sleeps for hours instead of seconds; CI fails in tests/test_retry.py.",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: exponential backoff in milliseconds",
+      "files": {
+        "app/retry.py": "def backoff_ms(attempt: int) -> int:\n    return 2 ** attempt * 100\n",
+        "tests/test_retry.py": "from app.retry import backoff_ms\n\n\ndef test_first_retry_waits_a_tenth_of_a_second():\n    assert backoff_ms(0) == 100\n\n\ndef test_backoff_grows():\n    assert backoff_ms(3) == 800\n"
+      }
+    },
+    {
+      "message": "fix: make the backoff more conservative",
+      "files": {
+        "app/retry.py": "def backoff_ms(attempt: int) -> int:\n    return 2 ** attempt * 100 * 1000\n"
+      }
+    }
+  ],
+  "github": {
+    "repo": "acme/worker",
+    "ref": "main",
+    "run": 4184,
+    "sha": "1b8d3f5a7c9e0426183a5b7c9d1e3f5a7b9c1d3e",
+    "jobs": [
+      {
+        "id": 19004,
+        "name": "pytest (3.12)",
+        "conclusion": "failure",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run tests",
+            "conclusion": "failure"
+          }
+        ]
+      }
+    ],
+    "log": "2026-01-02T09:12:31.000Z ##[group]Run python -m pytest tests -q\n2026-01-02T09:12:31.037Z python -m pytest tests -q\n2026-01-02T09:12:31.074Z FF\n2026-01-02T09:12:31.111Z =================================== FAILURES ===================================\n2026-01-02T09:12:31.148Z ___________ test_first_retry_waits_a_tenth_of_a_second ___________\n2026-01-02T09:12:31.185Z     def test_first_retry_waits_a_tenth_of_a_second():\n2026-01-02T09:12:31.222Z >       assert backoff_ms(0) == 100\n2026-01-02T09:12:31.259Z E       AssertionError: assert 100000 == 100\n2026-01-02T09:12:31.296Z E        +  where 100000 = backoff_ms(0)\n2026-01-02T09:12:31.333Z tests/test_retry.py:5: AssertionError\n2026-01-02T09:12:31.370Z =========================== short test summary info ===========================\n2026-01-02T09:12:31.407Z FAILED tests/test_retry.py::test_first_retry_waits_a_tenth_of_a_second - Assert\n2026-01-02T09:12:31.444Z FAILED tests/test_retry.py::test_backoff_grows - AssertionError\n2026-01-02T09:12:31.481Z 2 failed\n2026-01-02T09:12:31.518Z ##[error]Process completed with exit code 1.\n"
+  }
+}

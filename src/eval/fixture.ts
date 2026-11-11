@@ -12,6 +12,8 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import { parseGithubScenario, type GithubScenario } from "./github-fixture.js";
+
 const run = promisify(execFile);
 /** Fixed so two builds of the same fixture produce the same shas. */
 const BASE_TIME = Date.parse("2026-01-01T00:00:00Z");
@@ -22,13 +24,20 @@ export interface FixtureCommit {
   files: Record<string, string>;
 }
 
+/** Where the evidence for a fixture lives: the checkout, or a CI run plus the checkout. */
+export type FixtureKind = "git" | "github";
+
 export interface Fixture {
   id: string;
+  /** Defaults to "git"; "github" adds a stub of the checks, jobs and log endpoints. */
+  kind: FixtureKind;
   /** The failing test, as a user would report it. */
   symptom: string;
   /** 1-based index into commits: the commit that introduced the regression. */
   expected_commit: number;
   commits: FixtureCommit[];
+  /** Present exactly when kind is "github". */
+  github?: GithubScenario;
 }
 
 export interface BuiltRepo {
@@ -53,6 +62,8 @@ export function parseFixture(value: unknown, source: string): Fixture {
   const symptom = record["symptom"];
   const expected = record["expected_commit"];
   const commits = record["commits"];
+  const kind = record["kind"] ?? "git";
+  const github = record["github"];
   if (typeof id !== "string" || id.trim().length === 0) {
     throw new Error(source + ": id must be a non-empty string");
   }
@@ -93,7 +104,23 @@ export function parseFixture(value: unknown, source: string): Fixture {
   if (expected < 1 || expected > parsedCommits.length) {
     throw new Error(source + ": expected_commit must be between 1 and " + String(parsedCommits.length));
   }
-  return { id, symptom, expected_commit: expected, commits: parsedCommits };
+  if (kind !== "git" && kind !== "github") {
+    throw new Error(source + ': kind must be "git" or "github"');
+  }
+  if (kind === "github") {
+    return {
+      id,
+      kind,
+      symptom,
+      expected_commit: expected,
+      commits: parsedCommits,
+      github: parseGithubScenario(github, source),
+    };
+  }
+  if (github !== undefined) {
+    throw new Error(source + ': a "github" block needs kind: "github"');
+  }
+  return { id, kind: "git", symptom, expected_commit: expected, commits: parsedCommits };
 }
 
 export function loadFixtures(dir: string): Fixture[] {
@@ -109,7 +136,7 @@ export function loadFixtures(dir: string): Fixture[] {
   });
 }
 
-/** Bake a fixture into a real repository under root/fixture.id. */
+/** Every fixture is baked into a real repository, GitHub-shaped ones included. */
 export async function buildRepo(fixture: Fixture, root: string): Promise<BuiltRepo> {
   const repo = path.join(root, fixture.id);
   mkdirSync(repo, { recursive: true });

@@ -7,6 +7,7 @@ import { runAgent, type AgentEvent, type AgentLimits, type AgentRun } from "../a
 import { callTool, connectInProcess } from "../agent/mcp-tools.js";
 import type { Provider } from "../agent/provider.js";
 import { buildRepo, type BuiltRepo, type Fixture } from "./fixture.js";
+import { installGithubStub } from "./github-fixture.js";
 import { rawGitToolbox } from "./git-tool.js";
 import { gradeRun, type EvalScore } from "./grade.js";
 
@@ -30,7 +31,8 @@ export interface CaseResult {
 }
 
 export const EVAL_SYSTEM_PROMPT = [
-  "You are investigating a failing test in a local git repository.",
+  "You are investigating a failing test. The repository is checked out locally; a CI run",
+  "may or may not be reachable through the tools you were given.",
   "You have read-only tools. Nothing you do can change the repository, and nothing you do",
   "is deployed anywhere.",
   "",
@@ -44,6 +46,41 @@ export const EVAL_SYSTEM_PROMPT = [
 ].join("\n");
 
 export function taskPrompt(fixture: Fixture, build: BuiltRepo, arm: Arm): string {
+  const symptom = fixture.symptom
+    .split("\n")
+    .map((line) => "  " + line)
+    .join("\n");
+  const github = fixture.github;
+  if (github !== undefined) {
+    const tools =
+      arm === "mcp"
+        ? [
+            "Tools: gh_ci_failures(repo, ref, include_logs) reads the CI run on GitHub;",
+            "git_log and git_diff read the checkout at " + build.repo + ".",
+          ].join("\n")
+        : "The only tool is git, and it can read this checkout but not GitHub. No workflow log is on disk.";
+    return [
+      "CI is failing on " + github.repo + " at " + github.ref + ".",
+      "",
+      symptom,
+      "",
+      "The checkout is at " + build.repo + ".",
+      "The workflow run is " + String(github.run) + "; the failing job's log is on GitHub.",
+      tools,
+      "",
+      "Find the commit that introduced this regression, then answer with exactly these two",
+      "sections:",
+      "",
+      "## Introduced by",
+      "<the commit sha, exactly as the history printed it>",
+      "",
+      "## Why",
+      "<at most 150 words: what that commit changed, and which failing step or error says so>",
+      "",
+      "Do not modify files. Do not guess: if the evidence does not identify a commit, say so",
+      "in the Why section and leave Introduced by empty.",
+    ].join("\n");
+  }
   const tools =
     arm === "mcp"
       ? "Tools: git_log, git_diff, git_status. They take an absolute repo path."
@@ -51,10 +88,7 @@ export function taskPrompt(fixture: Fixture, build: BuiltRepo, arm: Arm): string
   return [
     "A test is failing.",
     "",
-    fixture.symptom
-      .split("\n")
-      .map((line) => "  " + line)
-      .join("\n"),
+    symptom,
     "",
     "The repository is checked out at " + build.repo + ". Its history is the evidence.",
     tools,
@@ -78,6 +112,9 @@ export async function runCase(fixture: Fixture, root: string, options: CaseOptio
   const provider = options.providerFor(build);
   const system = EVAL_SYSTEM_PROMPT;
   const task = taskPrompt(fixture, build, options.arm);
+  // The stub is installed for both arms: the raw arm has no GitHub tool, so it never
+  // reaches the network, and the score shows exactly that.
+  const stub = fixture.github === undefined ? null : installGithubStub(fixture.github);
 
   let run: AgentRun;
   if (options.arm === "mcp") {
@@ -97,6 +134,7 @@ export async function runCase(fixture: Fixture, root: string, options: CaseOptio
       });
     } finally {
       await connection.close();
+      stub?.restore();
     }
   } else {
     run = await runAgent({
@@ -110,5 +148,6 @@ export async function runCase(fixture: Fixture, root: string, options: CaseOptio
     });
   }
 
+  stub?.restore();
   return { fixture, build, run, score: gradeRun(fixture, build.expectedSha, build.shas, run) };
 }

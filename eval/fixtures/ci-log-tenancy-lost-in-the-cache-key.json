@@ -1,0 +1,55 @@
+{
+  "id": "ci-log-tenancy-lost-in-the-cache-key",
+  "kind": "github",
+  "symptom": "CI on acme/shop main is red in the pytest job; the failing tests live in tests/test_cache.py.",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: scope the cache key by tenant",
+      "files": {
+        "app/cache.py": "def key_for(tenant: str, item_id: int) -> str:\n    return f\"{tenant}:{item_id}\"\n",
+        "tests/test_cache.py": "from app.cache import key_for\n\n\ndef test_tenant_is_part_of_the_key():\n    assert key_for(\"acme\", 42) == \"acme:42\"\n\n\ndef test_two_tenants_never_share_a_key():\n    assert key_for(\"acme\", 42) != key_for(\"globex\", 42)\n"
+      }
+    },
+    {
+      "message": "refactor: simplify the cache key",
+      "files": {
+        "app/cache.py": "def key_for(tenant: str, item_id: int) -> str:\n    return f\"{item_id}\"\n"
+      }
+    },
+    {
+      "message": "chore: describe the cache module",
+      "files": {
+        "app/cache.py": "\"\"\"Cache keys for the shared lookup path.\"\"\"\n\n\ndef key_for(tenant: str, item_id: int) -> str:\n    return f\"{item_id}\"\n"
+      }
+    }
+  ],
+  "github": {
+    "repo": "acme/shop",
+    "ref": "main",
+    "run": 4181,
+    "sha": "9c1f0a2b7d4e6f80312233445566778899aabbcc",
+    "jobs": [
+      {
+        "id": 19001,
+        "name": "pytest (3.12)",
+        "conclusion": "failure",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install dependencies",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run tests",
+            "conclusion": "failure"
+          }
+        ]
+      }
+    ],
+    "log": "2026-01-02T09:12:31.000Z ##[group]Run python -m pytest tests -q\n2026-01-02T09:12:31.037Z python -m pytest tests -q\n2026-01-02T09:12:31.074Z ..F\n2026-01-02T09:12:31.111Z =================================== FAILURES ===================================\n2026-01-02T09:12:31.148Z ____________________ test_tenant_is_part_of_the_key ____________________\n2026-01-02T09:12:31.185Z     def test_tenant_is_part_of_the_key():\n2026-01-02T09:12:31.222Z >       assert key_for(\"acme\", 42) == \"acme:42\"\n2026-01-02T09:12:31.259Z E       AssertionError: assert '42' == 'acme:42'\n2026-01-02T09:12:31.296Z E         - acme:42\n2026-01-02T09:12:31.333Z E         + 42\n2026-01-02T09:12:31.370Z tests/test_cache.py:5: AssertionError\n2026-01-02T09:12:31.407Z =========================== short test summary info ===========================\n2026-01-02T09:12:31.444Z FAILED tests/test_cache.py::test_tenant_is_part_of_the_key - AssertionError\n2026-01-02T09:12:31.481Z FAILED tests/test_cache.py::test_two_tenants_never_share_a_key - AssertionError\n2026-01-02T09:12:31.518Z 1 failed, 1 passed\n2026-01-02T09:12:31.555Z ##[error]Process completed with exit code 1.\n"
+  }
+}

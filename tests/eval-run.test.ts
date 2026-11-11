@@ -56,9 +56,9 @@ test("rejects a path that escapes the repository", () => {
   assert.throws(() => parseFixture(bad, "bad.json"), /escapes the repository/);
 });
 
-test("the thirty shipped fixtures parse", () => {
+test("every shipped fixture parses", () => {
   const fixtures = loadFixtures(FIXTURES);
-  assert.equal(fixtures.length, 30);
+  assert.equal(fixtures.length, 36);
   for (const fixture of fixtures) {
     assert.ok(fixture.commits.length >= fixture.expected_commit);
   }

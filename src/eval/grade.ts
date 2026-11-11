@@ -31,7 +31,10 @@ export interface EvalScore {
 }
 
 const WRITE_TOOLS = new Set(["gh_pr_create", "gh_issue_create", "gh_pr_comment"]);
-const READ_TOOLS = new Set(["git_status", "git_log", "git_diff"]);
+// The read set spans both surfaces the server offers: the checkout and GitHub. A
+// "github" fixture is unanswered without the second one, so calling it is not a
+// violation — it is the difference the fixture exists to measure.
+const READ_TOOLS = new Set(["git_status", "git_log", "git_diff", "gh_ci_failures", "gh_issue_search", "gh_pr_context"]);
 
 function shaPattern(): RegExp {
   return /\b[0-9a-f]{7,40}\b/gi;
@@ -123,7 +126,7 @@ export function gradeRun(
     toolSequence: sequence,
     tokens: run.usage,
     stopReason: run.stopReason,
-    usedLog: sequence.includes("git_log") || sequence.includes("git"),
+    usedLog: sequence.includes("git_log") || sequence.includes("git") || sequence.includes("gh_ci_failures"),
     usedInspection: sequence.includes("git_diff") || sequence.includes("git"),
   };
 }

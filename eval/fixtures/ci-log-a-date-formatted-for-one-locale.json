@@ -1,0 +1,50 @@
+{
+  "id": "ci-log-a-date-formatted-for-one-locale",
+  "kind": "github",
+  "symptom": "Report dates changed shape on the runner while still passing locally; CI is red in the date test.",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: render report dates as calendar days",
+      "files": {
+        "package.json": "{\n  \"name\": \"reports\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": { \"test\": \"node --test\" }\n}\n",
+        "src/day.js": "export function day(value) {\n  return new Date(value).toISOString().slice(0, 10);\n}\n",
+        "test/day.test.js": "import assert from \"node:assert/strict\";\nimport test from \"node:test\";\n\nimport { day } from \"../src/day.js\";\n\ntest(\"a timestamp renders as an ISO day\", () => {\n  assert.equal(day(\"2026-01-02T10:00:00Z\"), \"2026-01-02\");\n});\n"
+      }
+    },
+    {
+      "message": "fix: use the reader's date format in reports",
+      "files": {
+        "src/day.js": "export function day(value) {\n  return new Date(value).toLocaleDateString(\"en-US\");\n}\n"
+      }
+    }
+  ],
+  "github": {
+    "repo": "acme/reports",
+    "ref": "main",
+    "run": 4186,
+    "sha": "6f8e0a2c4b6d8f0a2c4e6b8d0f2a4c6e8b0d2f4a",
+    "jobs": [
+      {
+        "id": 19006,
+        "name": "node --test (22)",
+        "conclusion": "failure",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "npm ci",
+            "conclusion": "success"
+          },
+          {
+            "name": "npm test",
+            "conclusion": "failure"
+          }
+        ]
+      }
+    ],
+    "log": "2026-01-02T09:12:31.000Z ##[group]Run npm test\n2026-01-02T09:12:31.037Z > reports@ test\n2026-01-02T09:12:31.074Z > node --test\n2026-01-02T09:12:31.111Z ▶ a timestamp renders as an ISO day\n2026-01-02T09:12:31.148Z   ✖ a timestamp renders as an ISO day (2.1157ms)\n2026-01-02T09:12:31.185Z   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n2026-01-02T09:12:31.222Z   '1/2/2026' !== '2026-01-02'\n2026-01-02T09:12:31.259Z       actual: \"1/2/2026\",\n2026-01-02T09:12:31.296Z     expected: \"2026-01-02\",\n2026-01-02T09:12:31.333Z     at test/day.test.js:6:10\n2026-01-02T09:12:31.370Z ℹ pass 0\n2026-01-02T09:12:31.407Z ℹ fail 1\n2026-01-02T09:12:31.444Z ##[error]Process completed with exit code 1.\n"
+  }
+}

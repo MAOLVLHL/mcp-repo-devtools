@@ -1,0 +1,50 @@
+{
+  "id": "ci-log-a-missing-user-stops-rejecting",
+  "kind": "github",
+  "symptom": "The console renders a blank profile instead of an error when a user is missing; CI is red on main.",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: reject when a user does not exist",
+      "files": {
+        "package.json": "{\n  \"name\": \"console\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": { \"test\": \"node --test\" }\n}\n",
+        "src/load.js": "export async function loadUser(db, id) {\n  const row = await db.find(id);\n  if (!row) {\n    throw new Error(\"user \" + id + \" does not exist\");\n  }\n  return row;\n}\n",
+        "test/load.test.js": "import assert from \"node:assert/strict\";\nimport test from \"node:test\";\n\nimport { loadUser } from \"../src/load.js\";\n\ntest(\"a missing user rejects\", async () => {\n  const db = { find: async () => null };\n  await assert.rejects(() => loadUser(db, 7), /does not exist/);\n});\n"
+      }
+    },
+    {
+      "message": "fix: tolerate a missing user in the profile route",
+      "files": {
+        "src/load.js": "export async function loadUser(db, id) {\n  const row = await db.find(id);\n  if (!row) {\n    return null;\n  }\n  return row;\n}\n"
+      }
+    }
+  ],
+  "github": {
+    "repo": "acme/console",
+    "ref": "main",
+    "run": 4185,
+    "sha": "3e5a7c9b1d3f5024819ace2468bdf13579ace246",
+    "jobs": [
+      {
+        "id": 19005,
+        "name": "node --test (22)",
+        "conclusion": "failure",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "npm ci",
+            "conclusion": "success"
+          },
+          {
+            "name": "npm test",
+            "conclusion": "failure"
+          }
+        ]
+      }
+    ],
+    "log": "2026-01-02T09:12:31.000Z ##[group]Run npm test\n2026-01-02T09:12:31.037Z > console@ test\n2026-01-02T09:12:31.074Z > node --test\n2026-01-02T09:12:31.111Z ▶ a missing user rejects\n2026-01-02T09:12:31.148Z   ✖ a missing user rejects (1.2043ms)\n2026-01-02T09:12:31.185Z   AssertionError [ERR_ASSERTION]: Missing expected rejection (does not exist).\n2026-01-02T09:12:31.222Z     at test/load.test.js:7:9\n2026-01-02T09:12:31.259Z ▶ failing tests:\n2026-01-02T09:12:31.296Z ✖ a missing user rejects (1.2043ms)\n2026-01-02T09:12:31.333Z ℹ tests 1\n2026-01-02T09:12:31.370Z ℹ pass 0\n2026-01-02T09:12:31.407Z ℹ fail 1\n2026-01-02T09:12:31.444Z ##[error]Process completed with exit code 1.\n"
+  }
+}

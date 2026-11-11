@@ -1,0 +1,45 @@
+{
+  "id": "ci-log-pagination-never-leaves-the-first-page",
+  "kind": "github",
+  "symptom": "The nightly import job stops after ten pages and fails; the log ends inside the pager test.",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: collect every page of a paged endpoint",
+      "files": {
+        "app/pager.py": "def collect(fetch, max_pages: int = 10):\n    cursor = None\n    seen = []\n    pages = 0\n    while pages < max_pages:\n        items, cursor = fetch(cursor)\n        seen.extend(items)\n        pages += 1\n        if cursor is None:\n            return seen\n    raise RuntimeError(\"cursor did not advance after %d pages\" % pages)\n",
+        "tests/test_pager.py": "from app.pager import collect\n\n\ndef ask(cursor):\n    return ([cursor or 1], 2 if cursor is None else None)\n\n\ndef test_collect_walks_every_page():\n    assert collect(ask) == [1, 2]\n"
+      }
+    },
+    {
+      "message": "fix: stop when a page comes back empty",
+      "files": {
+        "app/pager.py": "def collect(fetch, max_pages: int = 10):\n    cursor = None\n    seen = []\n    pages = 0\n    while pages < max_pages:\n        items, cursor = fetch(cursor)\n        seen.extend(items)\n        pages += 1\n        if not items:\n            return seen\n    raise RuntimeError(\"cursor did not advance after %d pages\" % pages)\n"
+      }
+    }
+  ],
+  "github": {
+    "repo": "acme/shop",
+    "ref": "main",
+    "run": 4182,
+    "sha": "4d2e6c8a0b1f3d5e7a9c2b4d6f8a0c1e3b5d7f90",
+    "jobs": [
+      {
+        "id": 19002,
+        "name": "pytest (3.12)",
+        "conclusion": "failure",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run tests",
+            "conclusion": "failure"
+          }
+        ]
+      }
+    ],
+    "log": "2026-01-02T09:12:31.000Z ##[group]Run python -m pytest tests -q\n2026-01-02T09:12:31.037Z python -m pytest tests -q\n2026-01-02T09:12:31.074Z F\n2026-01-02T09:12:31.111Z =================================== FAILURES ===================================\n2026-01-02T09:12:31.148Z ____________________ test_collect_walks_every_page ____________________\n2026-01-02T09:12:31.185Z     def test_collect_walks_every_page():\n2026-01-02T09:12:31.222Z >       assert collect(ask) == [1, 2]\n2026-01-02T09:12:31.259Z E       RuntimeError: cursor did not advance after 10 pages\n2026-01-02T09:12:31.296Z tests/test_pager.py:8: RuntimeError\n2026-01-02T09:12:31.333Z =========================== short test summary info ===========================\n2026-01-02T09:12:31.370Z FAILED tests/test_pager.py::test_collect_walks_every_page - RuntimeError\n2026-01-02T09:12:31.407Z 1 failed\n2026-01-02T09:12:31.444Z ##[error]Process completed with exit code 1.\n"
+  }
+}

@@ -45,10 +45,43 @@ function tokens(result: CaseResult): number {
   return result.score.tokens.input + result.score.tokens.output;
 }
 
+/** A suite is one arm over both kinds of fixture; the report keeps them apart. */
+export interface KindSummary {
+  kind: string;
+  summary: SuiteSummary;
+}
+
+export function summarizeByKind(results: CaseResult[]): KindSummary[] {
+  const kinds = [...new Set(results.map((result) => result.fixture.kind))].sort();
+  return kinds.map((kind) => ({
+    kind,
+    summary: summarize(results.filter((result) => result.fixture.kind === kind)),
+  }));
+}
+
+export function formatKinds(kinds: KindSummary[]): string {
+  if (kinds.length < 2) {
+    return "";
+  }
+  return kinds
+    .map(
+      (entry) =>
+        entry.kind +
+        " fixtures: " +
+        String(entry.summary.passed) +
+        "/" +
+        String(entry.summary.cases) +
+        " (" +
+        String(Math.round(entry.summary.successRate * 1000) / 10) +
+        "%)",
+    )
+    .join("  ·  ");
+}
+
 export function formatTable(results: CaseResult[]): string {
   const lines = [
-    "| Fixture | Result | Cited | Turns | Calls | Duplicates | Tokens |",
-    "| --- | --- | --- | ---: | ---: | ---: | ---: |",
+    "| Fixture | Kind | Result | Cited | Turns | Calls | Duplicates | Tokens |",
+    "| --- | --- | --- | --- | ---: | ---: | ---: | ---: |",
   ];
   for (const result of results) {
     const score = result.score;
@@ -56,6 +89,8 @@ export function formatTable(results: CaseResult[]): string {
     lines.push(
       "| " +
         result.fixture.id +
+        " | " +
+        result.fixture.kind +
         " | " +
         (score.success ? "pass" : "fail") +
         " | " +

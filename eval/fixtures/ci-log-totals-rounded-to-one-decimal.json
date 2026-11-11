@@ -1,0 +1,45 @@
+{
+  "id": "ci-log-totals-rounded-to-one-decimal",
+  "kind": "github",
+  "symptom": "Invoices stopped matching the ledger after yesterday's deploy; the billing suite is red on main.",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: format invoice totals from integer cents",
+      "files": {
+        "app/billing.py": "from decimal import Decimal\n\n\ndef total(cents: list[int]) -> str:\n    return f\"{Decimal(sum(cents)) / 100:.2f}\"\n",
+        "tests/test_billing.py": "from app.billing import total\n\n\ndef test_total_keeps_cents():\n    assert total([1001]) == \"10.01\"\n\n\ndef test_total_handles_small_amounts():\n    assert total([1, 2]) == \"0.03\"\n"
+      }
+    },
+    {
+      "message": "fix: round invoice totals to one decimal",
+      "files": {
+        "app/billing.py": "def total(cents: list[int]) -> str:\n    return f\"{round(sum(cents) / 100, 1):.2f}\"\n"
+      }
+    }
+  ],
+  "github": {
+    "repo": "acme/billing",
+    "ref": "main",
+    "run": 4183,
+    "sha": "7a3c9e1b5d7f2046829ace13579bdf24680ace13",
+    "jobs": [
+      {
+        "id": 19003,
+        "name": "pytest (3.12)",
+        "conclusion": "failure",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run tests",
+            "conclusion": "failure"
+          }
+        ]
+      }
+    ],
+    "log": "2026-01-02T09:12:31.000Z ##[group]Run python -m pytest tests -q\n2026-01-02T09:12:31.037Z python -m pytest tests -q\n2026-01-02T09:12:31.074Z .F\n2026-01-02T09:12:31.111Z =================================== FAILURES ===================================\n2026-01-02T09:12:31.148Z ____________________ test_total_keeps_cents ____________________\n2026-01-02T09:12:31.185Z     def test_total_keeps_cents():\n2026-01-02T09:12:31.222Z >       assert total([1001]) == \"10.01\"\n2026-01-02T09:12:31.259Z E       AssertionError: assert '10.00' == '10.01'\n2026-01-02T09:12:31.296Z E         - 10.01\n2026-01-02T09:12:31.333Z E         + 10.00\n2026-01-02T09:12:31.370Z tests/test_billing.py:5: AssertionError\n2026-01-02T09:12:31.407Z =========================== short test summary info ===========================\n2026-01-02T09:12:31.444Z FAILED tests/test_billing.py::test_total_keeps_cents - AssertionError\n2026-01-02T09:12:31.481Z 1 failed, 1 passed\n2026-01-02T09:12:31.518Z ##[error]Process completed with exit code 1.\n"
+  }
+}

@@ -4,10 +4,15 @@
  *   node dist/eval/cli.js                        # scripted oracle, all fixtures, offline
  *   node dist/eval/cli.js --arm baseline         # the same cases with one raw git tool
  *   OPENAI_API_KEY=… node dist/eval/cli.js --provider openai
+ *   node dist/eval/cli.js --kind github            # only the CI-shaped fixtures
  *   node dist/eval/cli.js --check eval/baseline.json   # gate this run per fixture
  *
- * The oracle run is the one CI uses: it must be 30/30, because a harness that
- * cannot score a known-correct trajectory cannot be trusted with a model's.
+ * The oracle run is the one CI uses: every case must pass, because a harness that cannot
+ * score a known-correct trajectory cannot be trusted with a model's. A miss fails the run
+ * on either arm, so the raw arm is scored on the git fixtures (npm run eval:baseline): one
+ * git command cannot read a CI log. If a model solves those CI cases anyway — and one did,
+ * at half the tokens — that is a finding about the fixtures, and it is published rather
+ * than excused. See docs/eval.md.
  */
 
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -21,13 +26,14 @@ import { compareToBaseline, formatComparison, parseBaseline, type BaselineCompar
 import { loadFixtures } from "./fixture.js";
 import { oracleTurns } from "./oracle.js";
 import { runCase, type Arm, type CaseResult } from "./run.js";
-import { formatSummary, formatTable, summarize } from "./suite.js";
+import { formatKinds, formatSummary, formatTable, summarize, summarizeByKind } from "./suite.js";
 
 const HELP = [
   "Usage: eval [options]",
   "",
   "  --fixtures <dir>   fixture directory (default eval/fixtures)",
   "  --arm <name>       mcp (default) or baseline (one raw git tool)",
+  "  --kind <name>      git, github, or all (default): fixtures to run",
   "  --provider <name>  scripted (default) or openai",
   "  --max-turns <n>    turn cap per case (default 8)",
   "  --check <file>     compare the run against a recorded baseline (eval/baseline.json)",
@@ -45,6 +51,7 @@ interface CaseFailure {
 interface CliValues {
   fixtures?: string;
   arm?: string;
+  kind?: string;
   provider?: string;
   "max-turns"?: string;
   check?: string;
@@ -72,6 +79,7 @@ export async function main(argv: string[]): Promise<number> {
     options: {
       fixtures: { type: "string", default: "eval/fixtures" },
       arm: { type: "string", default: "mcp" },
+      kind: { type: "string", default: "all" },
       provider: { type: "string", default: "scripted" },
       "max-turns": { type: "string", default: "8" },
       check: { type: "string" },
@@ -99,7 +107,17 @@ export async function main(argv: string[]): Promise<number> {
     return 2;
   }
 
-  const fixtures = loadFixtures(path.resolve(cli.fixtures ?? "eval/fixtures"));
+  const kind = cli.kind ?? "all";
+  if (kind !== "all" && kind !== "git" && kind !== "github") {
+    console.error("unknown kind: " + kind + " (expected git, github or all)");
+    return 2;
+  }
+  const allFixtures = loadFixtures(path.resolve(cli.fixtures ?? "eval/fixtures"));
+  const fixtures = kind === "all" ? allFixtures : allFixtures.filter((fixture) => fixture.kind === kind);
+  if (fixtures.length === 0) {
+    console.error("no fixtures of kind " + kind);
+    return 2;
+  }
   const maxTurns = Number(cli["max-turns"] ?? "8");
   if (!Number.isInteger(maxTurns) || maxTurns < 1) {
     console.error("--max-turns must be a positive integer");
@@ -149,12 +167,18 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   const summary = summarize(results);
+  const kinds = summarizeByKind(results);
+  const misses = results.filter((result) => !result.score.success);
 
   let check: BaselineComparison | undefined;
   let checkText = "";
   if (cli.check !== undefined) {
     try {
       const record = parseBaseline(JSON.parse(readFileSync(cli.check, "utf8")), cli.check);
+      if (record.arm !== arm) {
+        console.error("the baseline in " + cli.check + " was recorded on the " + record.arm + " arm, not " + arm);
+        return 2;
+      }
       check = compareToBaseline(record, results, { maxRegressions: allowedRegressions });
       checkText = formatComparison(record, check);
     } catch (error) {
@@ -170,6 +194,8 @@ export async function main(argv: string[]): Promise<number> {
           arm,
           provider: providerKind,
           summary,
+          kinds,
+          misses: misses.map((result) => result.fixture.id),
           failures,
           ...(check === undefined ? {} : { check }),
           results: results.map((result) => ({
@@ -187,6 +213,19 @@ export async function main(argv: string[]): Promise<number> {
     console.log(formatTable(results));
     console.log("");
     console.log(formatSummary(summary));
+    const byKind = formatKinds(kinds);
+    if (byKind.length > 0) {
+      console.log(byKind);
+    }
+    if (misses.length > 0) {
+      console.log(
+        String(misses.length) +
+          " miss(es) on the " +
+          arm +
+          " arm: " +
+          misses.map((result) => result.fixture.id).join(", "),
+      );
+    }
     if (failures.length > 0) {
       console.log("");
       console.log(String(failures.length) + " case(s) did not finish:");
@@ -206,7 +245,7 @@ export async function main(argv: string[]): Promise<number> {
   if (check !== undefined && !check.ok) {
     return 1;
   }
-  if (providerKind === "scripted" && summary.passed !== summary.cases) {
+  if (misses.length > 0) {
     return 1;
   }
   return 0;
