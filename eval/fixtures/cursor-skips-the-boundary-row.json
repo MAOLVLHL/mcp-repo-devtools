@@ -1,0 +1,26 @@
+{
+  "id": "cursor-skips-the-boundary-row",
+  "symptom": "tests/test_feed.py::test_cursor_row_is_repeated fails:\nAssertionError: assert [{'id': 4}] == [{'id': 3}, {'id': 4}]",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: read a feed after a cursor",
+      "files": {
+        "src/feed.py": "def after_cursor(rows, cursor):\n    return [row for row in rows if row[\"id\"] >= cursor]\n",
+        "tests/test_feed.py": "from src.feed import after_cursor\n\n\ndef test_cursor_row_is_repeated():\n    rows = [{\"id\": 1}, {\"id\": 3}, {\"id\": 4}]\n    assert after_cursor(rows, 3) == [{\"id\": 3}, {\"id\": 4}]\n"
+      }
+    },
+    {
+      "message": "fix: never send the cursor row twice",
+      "files": {
+        "src/feed.py": "def after_cursor(rows, cursor):\n    return [row for row in rows if row[\"id\"] > cursor]\n"
+      }
+    },
+    {
+      "message": "docs: describe the feed contract",
+      "files": {
+        "docs/feed.md": "# Feed\n\nRows are ordered by id.\n"
+      }
+    }
+  ]
+}

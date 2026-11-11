@@ -1,0 +1,26 @@
+{
+  "id": "page-slice-off-by-one",
+  "symptom": "tests/test_pager.py::test_second_page_has_two_items fails:\nAssertionError: assert ['c'] == ['c', 'd']",
+  "expected_commit": 3,
+  "commits": [
+    {
+      "message": "feat: paginate a list of names",
+      "files": {
+        "src/pager.py": "def page(items, page_no, size):\n    start = (page_no - 1) * size\n    return items[start:start + size]\n",
+        "tests/test_pager.py": "from src.pager import page\n\n\ndef test_second_page_has_two_items():\n    assert page([\"a\", \"b\", \"c\", \"d\"], 2, 2) == [\"c\", \"d\"]\n"
+      }
+    },
+    {
+      "message": "docs: explain the page numbering",
+      "files": {
+        "docs/paging.md": "# Paging\n\nPages start at 1.\n"
+      }
+    },
+    {
+      "message": "fix: never return more than a page",
+      "files": {
+        "src/pager.py": "def page(items, page_no, size):\n    start = (page_no - 1) * size\n    return items[start:start + size - 1]\n"
+      }
+    }
+  ]
+}

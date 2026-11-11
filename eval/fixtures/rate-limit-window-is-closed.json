@@ -1,0 +1,26 @@
+{
+  "id": "rate-limit-window-is-closed",
+  "symptom": "tests/test_limits.py::test_window_is_half_open fails:\nAssertionError: assert False is True",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: allow three requests per minute",
+      "files": {
+        "src/limits.py": "def allowed(timestamps, now, limit=3, window=60):\n    recent = [stamp for stamp in timestamps if now - stamp < window]\n    return len(recent) < limit\n",
+        "tests/test_limits.py": "from src.limits import allowed\n\n\ndef test_window_is_half_open():\n    assert allowed([0, 50, 55], now=60) is True\n\n\ndef test_three_inside_the_window_block_the_fourth():\n    assert allowed([50, 55, 60], now=100) is False\n"
+      }
+    },
+    {
+      "message": "fix: count a request that arrives exactly on the boundary",
+      "files": {
+        "src/limits.py": "def allowed(timestamps, now, limit=3, window=60):\n    recent = [stamp for stamp in timestamps if now - stamp <= window]\n    return len(recent) < limit\n"
+      }
+    },
+    {
+      "message": "chore: bump the limits module docstring",
+      "files": {
+        "src/limits.py": "\"\"\"Sliding-window rate limiting.\"\"\"\n\n\ndef allowed(timestamps, now, limit=3, window=60):\n    recent = [stamp for stamp in timestamps if now - stamp <= window]\n    return len(recent) < limit\n"
+      }
+    }
+  ]
+}

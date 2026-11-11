@@ -1,0 +1,26 @@
+{
+  "id": "dedupe-keeps-first-not-last",
+  "symptom": "tests/test_dedupe.py::test_last_write_wins fails:\nAssertionError: assert [{'id': 1, 'seen': 1}] == [{'id': 1, 'seen': 4}]",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: keep the newest record per id",
+      "files": {
+        "src/dedupe.py": "def latest_by_id(records):\n    newest = {}\n    for record in records:\n        newest[record[\"id\"]] = record\n    return list(newest.values())\n",
+        "tests/test_dedupe.py": "from src.dedupe import latest_by_id\n\n\ndef test_last_write_wins():\n    records = [\n        {\"id\": 1, \"seen\": 1},\n        {\"id\": 2, \"seen\": 2},\n        {\"id\": 1, \"seen\": 4},\n    ]\n    assert latest_by_id(records) == [{\"id\": 1, \"seen\": 4}, {\"id\": 2, \"seen\": 2}]\n"
+      }
+    },
+    {
+      "message": "perf: skip ids that were already collected",
+      "files": {
+        "src/dedupe.py": "def latest_by_id(records):\n    newest = {}\n    for record in records:\n        if record[\"id\"] in newest:\n            continue\n        newest[record[\"id\"]] = record\n    return list(newest.values())\n"
+      }
+    },
+    {
+      "message": "chore: add a dedupe example",
+      "files": {
+        "examples/dedupe.py": "from src.dedupe import latest_by_id\n\nprint(latest_by_id([{\"id\": 1}]))\n"
+      }
+    }
+  ]
+}

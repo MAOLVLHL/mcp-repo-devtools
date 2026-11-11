@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { ScriptedProvider } from "../src/agent/provider.js";
 import { buildRepo, loadFixtures, parseFixture } from "../src/eval/fixture.js";
 import { oracleTurns } from "../src/eval/oracle.js";
-import { runCase } from "../src/eval/run.js";
+import { runCase, taskPrompt } from "../src/eval/run.js";
 import { summarize } from "../src/eval/suite.js";
 
 const FIXTURES = fileURLToPath(new URL("../eval/fixtures", import.meta.url));
@@ -22,6 +22,19 @@ const gitAvailable = (() => {
     return false;
   }
 })();
+
+test("the task asks for the sha the tools can actually print", () => {
+  // git_log uses %h, so the full sha is not reachable from the typed arm. Asking for
+  // "the full commit sha" made four of the first thirty cases unwinnable, and the
+  // models padded the short sha rather than say so.
+  const prompt = taskPrompt(
+    { id: "x", symptom: "a test fails", expected_commit: 1, commits: [] },
+    { repo: "/tmp/repo", shas: [], expectedSha: "abc1234" },
+    "mcp",
+  );
+  assert.match(prompt, /exactly as the history printed it/);
+  assert.doesNotMatch(prompt, /full commit sha/);
+});
 
 test("rejects a fixture whose expected_commit is out of range", () => {
   const bad = {
@@ -43,9 +56,9 @@ test("rejects a path that escapes the repository", () => {
   assert.throws(() => parseFixture(bad, "bad.json"), /escapes the repository/);
 });
 
-test("the ten shipped fixtures parse", () => {
+test("the thirty shipped fixtures parse", () => {
   const fixtures = loadFixtures(FIXTURES);
-  assert.equal(fixtures.length, 10);
+  assert.equal(fixtures.length, 30);
   for (const fixture of fixtures) {
     assert.ok(fixture.commits.length >= fixture.expected_commit);
   }

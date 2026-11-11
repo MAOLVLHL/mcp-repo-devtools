@@ -1,0 +1,27 @@
+{
+  "id": "config-read-at-import-time",
+  "symptom": "test/config.test.js: a variable set after the import is ignored:\nAssertionError: Expected values to be strictly equal: 'http://localhost:3000' !== 'http://example.test'",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: read the base url from the environment",
+      "files": {
+        "package.json": "{\n  \"name\": \"fixture\",\n  \"private\": true,\n  \"type\": \"module\"\n}\n",
+        "src/config.js": "export function readConfig(env = process.env) {\n  return { url: env.API_URL ?? \"http://localhost:3000\" };\n}\n",
+        "test/config.test.js": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\n\nimport { readConfig } from \"../src/config.js\";\n\ntest(\"reads the variable at call time\", () => {\n  process.env.API_URL = \"http://example.test\";\n  try {\n    assert.equal(readConfig().url, \"http://example.test\");\n  } finally {\n    delete process.env.API_URL;\n  }\n});\n"
+      }
+    },
+    {
+      "message": "perf: build the config once at startup",
+      "files": {
+        "src/config.js": "const CONFIG = { url: process.env.API_URL ?? \"http://localhost:3000\" };\n\nexport function readConfig() {\n  return CONFIG;\n}\n"
+      }
+    },
+    {
+      "message": "docs: describe the api url",
+      "files": {
+        "docs/config.md": "# Config\n\nAPI_URL overrides the default base url.\n"
+      }
+    }
+  ]
+}

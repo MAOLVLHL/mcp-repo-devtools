@@ -1,0 +1,26 @@
+{
+  "id": "split-drops-the-remainder-cent",
+  "symptom": "tests/test_split.py::test_parts_add_up fails:\nAssertionError: assert 99 == 100",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: split an amount across weighted parts",
+      "files": {
+        "src/split.py": "def split(total_cents, weights):\n    total_weight = sum(weights)\n    parts = [round(total_cents * weight / total_weight) for weight in weights]\n    parts[-1] += total_cents - sum(parts)\n    return parts\n",
+        "tests/test_split.py": "from src.split import split\n\n\ndef test_parts_add_up():\n    parts = split(100, [1, 1, 1])\n    assert sum(parts) == 100\n\n\ndef test_equal_weights_are_even():\n    assert split(100, [1, 1, 1]) == [33, 33, 34]\n"
+      }
+    },
+    {
+      "message": "refactor: compute each share in one pass",
+      "files": {
+        "src/split.py": "def split(total_cents, weights):\n    total_weight = sum(weights)\n    return [round(total_cents * weight / total_weight) for weight in weights]\n"
+      }
+    },
+    {
+      "message": "test: cover a single part",
+      "files": {
+        "tests/test_split_single.py": "from src.split import split\n\n\ndef test_one_part_gets_everything():\n    assert split(50, [1]) == [50]\n"
+      }
+    }
+  ]
+}

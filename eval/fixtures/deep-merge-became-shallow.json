@@ -1,0 +1,27 @@
+{
+  "id": "deep-merge-became-shallow",
+  "symptom": "test/merge.test.js: merging one server key loses the other keys:\nAssertionError: Expected values to be deeply equal: { server: { port: 2 } } !== { server: { host: 'a', port: 2 } }",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: merge an override into the default config",
+      "files": {
+        "package.json": "{\n  \"name\": \"fixture\",\n  \"private\": true,\n  \"type\": \"module\"\n}\n",
+        "src/merge.js": "export function merge(base, override) {\n  const out = { ...base };\n  for (const [key, value] of Object.entries(override)) {\n    const nested = value !== null && typeof value === \"object\" && !Array.isArray(value);\n    out[key] = nested && typeof out[key] === \"object\" ? merge(out[key], value) : value;\n  }\n  return out;\n}\n",
+        "test/merge.test.js": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\n\nimport { merge } from \"../src/merge.js\";\n\ntest(\"merging one key keeps the other\", () => {\n  const base = { server: { host: \"a\", port: 1 } };\n  const out = merge(base, { server: { port: 2 } });\n  assert.deepEqual(out, { server: { host: \"a\", port: 2 } });\n});\n"
+      }
+    },
+    {
+      "message": "refactor: spread the override over the base",
+      "files": {
+        "src/merge.js": "export function merge(base, override) {\n  return { ...base, ...override };\n}\n"
+      }
+    },
+    {
+      "message": "docs: describe the merge order",
+      "files": {
+        "docs/config.md": "# Config\n\nOverrides win, key by key.\n"
+      }
+    }
+  ]
+}

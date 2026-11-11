@@ -1,0 +1,27 @@
+{
+  "id": "clamp-arguments-swapped",
+  "symptom": "test/clamp.test.js: a value above the ceiling comes back below the floor:\nAssertionError: Expected values to be strictly equal: 0 !== 3",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: clamp a number into a range",
+      "files": {
+        "package.json": "{\n  \"name\": \"fixture\",\n  \"private\": true,\n  \"type\": \"module\"\n}\n",
+        "src/clamp.js": "export function clamp(value, low, high) {\n  return Math.min(Math.max(value, low), high);\n}\n",
+        "test/clamp.test.js": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\n\nimport { clamp } from \"../src/clamp.js\";\n\ntest(\"clamps above the ceiling\", () => {\n  assert.equal(clamp(5, 0, 3), 3);\n});\n\ntest(\"clamps below the floor\", () => {\n  assert.equal(clamp(-1, 0, 3), 0);\n});\n\ntest(\"leaves a value inside the range alone\", () => {\n  assert.equal(clamp(2, 0, 3), 2);\n});\n"
+      }
+    },
+    {
+      "message": "refactor: fold the clamp into one min and one max",
+      "files": {
+        "src/clamp.js": "export function clamp(value, low, high) {\n  return Math.min(Math.max(value, high), low);\n}\n"
+      }
+    },
+    {
+      "message": "docs: show clamp in the readme",
+      "files": {
+        "README.md": "# Numeric helpers\n\nclamp(value, low, high).\n"
+      }
+    }
+  ]
+}

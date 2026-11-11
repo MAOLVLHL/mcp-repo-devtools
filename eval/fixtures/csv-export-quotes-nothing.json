@@ -1,0 +1,26 @@
+{
+  "id": "csv-export-quotes-nothing",
+  "symptom": "tests/test_csv_export.py::test_quotes_a_field_with_a_comma fails:\nAssertionError: assert 'a,b,c' == '\"a,b\",c'",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: export rows to csv",
+      "files": {
+        "src/csv_export.py": "import csv\nimport io\n\n\ndef to_csv(rows):\n    buf = io.StringIO()\n    writer = csv.writer(buf)\n    writer.writerows(rows)\n    return buf.getvalue().strip()\n",
+        "tests/test_csv_export.py": "from src.csv_export import to_csv\n\n\ndef test_quotes_a_field_with_a_comma():\n    assert to_csv([[\"a,b\", \"c\"]]) == '\"a,b\",c'\n"
+      }
+    },
+    {
+      "message": "perf: build the line with a join instead of the csv module",
+      "files": {
+        "src/csv_export.py": "\n\ndef to_csv(rows):\n    return \"\\n\".join(\",\".join(str(cell) for cell in row) for row in rows)\n"
+      }
+    },
+    {
+      "message": "chore: note the export format in the changelog",
+      "files": {
+        "CHANGELOG.md": "# Changelog\n\n## 0.2.0\n\n- CSV export.\n"
+      }
+    }
+  ]
+}

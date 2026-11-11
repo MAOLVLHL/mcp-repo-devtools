@@ -1,0 +1,27 @@
+{
+  "id": "async-cache-races-on-miss",
+  "symptom": "test/memo.test.js: two concurrent callers both miss the cache:\nAssertionError: Expected values to be strictly equal: 2 !== 1",
+  "expected_commit": 3,
+  "commits": [
+    {
+      "message": "feat: memoize an async lookup",
+      "files": {
+        "package.json": "{\n  \"name\": \"fixture\",\n  \"private\": true,\n  \"type\": \"module\"\n}\n",
+        "src/memo.js": "export function memoize(fn) {\n  const cache = new Map();\n  return (key) => {\n    if (!cache.has(key)) {\n      const pending = Promise.resolve(fn(key));\n      pending.catch(() => cache.delete(key));\n      cache.set(key, pending);\n    }\n    return cache.get(key);\n  };\n}\n",
+        "test/memo.test.js": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\n\nimport { memoize } from \"../src/memo.js\";\n\ntest(\"one lookup for two concurrent callers\", async () => {\n  let calls = 0;\n  const slow = memoize(async (key) => {\n    calls += 1;\n    await new Promise((resolve) => setTimeout(resolve, 5));\n    return key + \"-value\";\n  });\n  const [left, right] = await Promise.all([slow(\"k\"), slow(\"k\")]);\n  assert.equal(left, \"k-value\");\n  assert.equal(right, \"k-value\");\n  assert.equal(calls, 1);\n});\n"
+      }
+    },
+    {
+      "message": "docs: note the cache is per function",
+      "files": {
+        "docs/memo.md": "# Memoize\n\nEach memoized function owns one map.\n"
+      }
+    },
+    {
+      "message": "refactor: await the value before caching it",
+      "files": {
+        "src/memo.js": "export function memoize(fn) {\n  const cache = new Map();\n  return async (key) => {\n    if (cache.has(key)) {\n      return cache.get(key);\n    }\n    const value = await fn(key);\n    cache.set(key, value);\n    return value;\n  };\n}\n"
+      }
+    }
+  ]
+}

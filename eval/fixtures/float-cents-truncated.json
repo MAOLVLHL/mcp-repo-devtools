@@ -1,0 +1,26 @@
+{
+  "id": "float-cents-truncated",
+  "symptom": "tests/test_money.py::test_nineteen_ninety_nine fails:\nAssertionError: assert 1998 == 1999",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: convert an amount to integer cents",
+      "files": {
+        "src/money.py": "def to_cents(amount):\n    return int(round(amount * 100))\n",
+        "tests/test_money.py": "from src.money import to_cents\n\n\ndef test_nineteen_ninety_nine():\n    assert to_cents(19.99) == 1999\n\n\ndef test_twenty_nine_cents():\n    assert to_cents(0.29) == 29\n"
+      }
+    },
+    {
+      "message": "perf: drop the round call before the cast",
+      "files": {
+        "src/money.py": "def to_cents(amount):\n    return int(amount * 100)\n"
+      }
+    },
+    {
+      "message": "docs: explain where the amounts come from",
+      "files": {
+        "docs/money.md": "# Money\n\nAmounts arrive as decimal strings from the pricing API.\n"
+      }
+    }
+  ]
+}

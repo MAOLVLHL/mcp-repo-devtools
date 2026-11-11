@@ -1,0 +1,27 @@
+{
+  "id": "email-pattern-loses-its-anchor",
+  "symptom": "test/validate.test.js: an address with trailing text is accepted:\nAssertionError: Expected values to be strictly equal: true !== false",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: validate an email address",
+      "files": {
+        "package.json": "{\n  \"name\": \"fixture\",\n  \"private\": true,\n  \"type\": \"module\"\n}\n",
+        "src/validate.js": "const EMAIL = /^[^@\\s]+@[^@\\s]+\\.[a-z]{2,}$/i;\n\nexport function isEmail(value) {\n  return EMAIL.test(value);\n}\n",
+        "test/validate.test.js": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\n\nimport { isEmail } from \"../src/validate.js\";\n\ntest(\"accepts a plain address\", () => {\n  assert.equal(isEmail(\"a@b.co\"), true);\n});\n\ntest(\"rejects trailing text\", () => {\n  assert.equal(isEmail(\"a@b.co extra\"), false);\n});\n"
+      }
+    },
+    {
+      "message": "fix: let the pattern match anywhere in the string",
+      "files": {
+        "src/validate.js": "const EMAIL = /[^@\\s]+@[^@\\s]+\\.[a-z]{2,}/i;\n\nexport function isEmail(value) {\n  return EMAIL.test(value);\n}\n"
+      }
+    },
+    {
+      "message": "docs: say which addresses are accepted",
+      "files": {
+        "docs/validation.md": "# Validation\n\nASCII addresses only.\n"
+      }
+    }
+  ]
+}

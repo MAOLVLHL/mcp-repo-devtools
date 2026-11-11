@@ -1,0 +1,26 @@
+{
+  "id": "unicode-nfc-compare-dropped",
+  "symptom": "tests/test_names.py::test_accents_compare_equal fails:\nAssertionError: assert False is True",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: compare person names",
+      "files": {
+        "src/names.py": "import unicodedata\n\n\ndef same_name(left, right):\n    return unicodedata.normalize(\"NFC\", left) == unicodedata.normalize(\"NFC\", right)\n",
+        "tests/test_names.py": "from src.names import same_name\n\n\ndef test_accents_compare_equal():\n    assert same_name(\"Jos\\u00e9\", \"Jose\\u0301\") is True\n"
+      }
+    },
+    {
+      "message": "refactor: compare the strings directly",
+      "files": {
+        "src/names.py": "def same_name(left, right):\n    return left == right\n"
+      }
+    },
+    {
+      "message": "docs: note that names arrive from two upstreams",
+      "files": {
+        "docs/names.md": "# Names\n\nOne upstream sends composed accents, the other decomposed.\n"
+      }
+    }
+  ]
+}

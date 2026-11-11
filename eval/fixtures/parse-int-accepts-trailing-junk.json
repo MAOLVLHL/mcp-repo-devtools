@@ -1,0 +1,27 @@
+{
+  "id": "parse-int-accepts-trailing-junk",
+  "symptom": "test/port.test.js: port 8080abc is accepted:\nAssertionError: Missing expected exception",
+  "expected_commit": 3,
+  "commits": [
+    {
+      "message": "feat: parse a port from configuration",
+      "files": {
+        "package.json": "{\n  \"name\": \"fixture\",\n  \"private\": true,\n  \"type\": \"module\"\n}\n",
+        "src/port.js": "export function parsePort(raw) {\n  const value = Number(raw);\n  if (!Number.isInteger(value) || value < 1 || value > 65535) {\n    throw new Error(\"invalid port: \" + raw);\n  }\n  return value;\n}\n",
+        "test/port.test.js": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\n\nimport { parsePort } from \"../src/port.js\";\n\ntest(\"accepts 8080\", () => {\n  assert.equal(parsePort(\"8080\"), 8080);\n});\n\ntest(\"rejects a trailing unit\", () => {\n  assert.throws(() => parsePort(\"8080abc\"), /invalid port/);\n});\n"
+      }
+    },
+    {
+      "message": "docs: explain the port range",
+      "files": {
+        "docs/ports.md": "# Ports\n\n1 to 65535.\n"
+      }
+    },
+    {
+      "message": "fix: use parseInt for the numeric cast",
+      "files": {
+        "src/port.js": "export function parsePort(raw) {\n  const value = parseInt(raw, 10);\n  if (!Number.isInteger(value) || value < 1 || value > 65535) {\n    throw new Error(\"invalid port: \" + raw);\n  }\n  return value;\n}\n"
+      }
+    }
+  ]
+}

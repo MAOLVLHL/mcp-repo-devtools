@@ -1,0 +1,26 @@
+{
+  "id": "timeout-unit-swapped",
+  "symptom": "tests/test_deadline.py::test_thirty_seconds fails:\nAssertionError: assert 0.03 == 30.0",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: compute a deadline from a timeout",
+      "files": {
+        "src/deadline.py": "from datetime import timedelta\n\n\ndef deadline(start, seconds):\n    return start + timedelta(seconds=seconds)\n",
+        "tests/test_deadline.py": "from datetime import datetime, timezone\n\nfrom src.deadline import deadline\n\n\ndef test_thirty_seconds():\n    start = datetime(2026, 1, 1, tzinfo=timezone.utc)\n    assert (deadline(start, 30) - start).total_seconds() == 30.0\n"
+      }
+    },
+    {
+      "message": "fix: accept the timeout in milliseconds like the config does",
+      "files": {
+        "src/deadline.py": "from datetime import timedelta\n\n\ndef deadline(start, seconds):\n    return start + timedelta(milliseconds=seconds)\n"
+      }
+    },
+    {
+      "message": "chore: rename the module docstring",
+      "files": {
+        "docs/timeouts.md": "# Timeouts\n\nThe gateway config uses milliseconds.\n"
+      }
+    }
+  ]
+}

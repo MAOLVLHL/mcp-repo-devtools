@@ -7,7 +7,7 @@
       "message": "chore: scaffold auth module",
       "files": {
         "src/auth.py": "def refresh(payload):\n    token = payload.get(\"token\", \"\")\n    return {\"token\": token.strip()}\n",
-        "tests/test_auth.py": "from src.auth import refresh\n\n\ndef test_refresh():\n    assert refresh({\"token\": \" abc \"}) == {\"token\": \"abc\"}\n"
+        "tests/test_auth.py": "from src.auth import refresh\n\n\ndef test_refresh():\n    assert refresh({\"token\": \" abc \"}) == {\"token\": \"abc\"}\n\n\ndef test_refresh_without_a_token():\n    assert refresh({}) == {\"token\": \"\"}\n"
       }
     },
     {

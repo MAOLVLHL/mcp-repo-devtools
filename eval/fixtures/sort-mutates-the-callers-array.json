@@ -1,0 +1,27 @@
+{
+  "id": "sort-mutates-the-callers-array",
+  "symptom": "test/sort.test.js: the caller's array comes back reordered:\nAssertionError: Expected values to be deeply equal: [ 3, 1 ] !== [ 1, 3 ]",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: sort rows by score",
+      "files": {
+        "package.json": "{\n  \"name\": \"fixture\",\n  \"private\": true,\n  \"type\": \"module\"\n}\n",
+        "src/sort.js": "export function sortedByScore(rows) {\n  return [...rows].sort((left, right) => right.score - left.score);\n}\n",
+        "test/sort.test.js": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\n\nimport { sortedByScore } from \"../src/sort.js\";\n\ntest(\"the caller's array is not reordered\", () => {\n  const rows = [{ score: 1 }, { score: 3 }];\n  const sorted = sortedByScore(rows);\n  assert.deepEqual(sorted.map((row) => row.score), [3, 1]);\n  assert.deepEqual(rows.map((row) => row.score), [1, 3]);\n});\n"
+      }
+    },
+    {
+      "message": "perf: sort in place instead of copying",
+      "files": {
+        "src/sort.js": "export function sortedByScore(rows) {\n  return rows.sort((left, right) => right.score - left.score);\n}\n"
+      }
+    },
+    {
+      "message": "chore: document the sort test",
+      "files": {
+        "test/sort.test.js": "// The caller keeps ownership of its array; the helper returns a new one.\nimport test from \"node:test\";\nimport assert from \"node:assert/strict\";\n\nimport { sortedByScore } from \"../src/sort.js\";\n\ntest(\"the caller's array is not reordered\", () => {\n  const rows = [{ score: 1 }, { score: 3 }];\n  const sorted = sortedByScore(rows);\n  assert.deepEqual(sorted.map((row) => row.score), [3, 1]);\n  assert.deepEqual(rows.map((row) => row.score), [1, 3]);\n});\n"
+      }
+    }
+  ]
+}

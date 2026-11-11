@@ -1,0 +1,26 @@
+{
+  "id": "slug-regex-consumes-underscore",
+  "symptom": "tests/test_slug.py::test_keeps_underscores fails:\nAssertionError: assert 'hello-world' == 'hello_world'",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: slugify titles for permalinks",
+      "files": {
+        "src/slug.py": "import re\n\n\ndef slugify(title):\n    cleaned = re.sub(r\"[^a-z0-9_]+\", \"-\", title.lower())\n    return cleaned.strip(\"-\")\n",
+        "tests/test_slug.py": "from src.slug import slugify\n\n\ndef test_keeps_underscores():\n    assert slugify(\"Hello_World\") == \"hello_world\"\n\n\ndef test_collapses_spaces():\n    assert slugify(\"Hello   World\") == \"hello-world\"\n"
+      }
+    },
+    {
+      "message": "refactor: simplify the slug character class",
+      "files": {
+        "src/slug.py": "import re\n\n\ndef slugify(title):\n    cleaned = re.sub(r\"[^a-z0-9]+\", \"-\", title.lower())\n    return cleaned.strip(\"-\")\n"
+      }
+    },
+    {
+      "message": "docs: add permalink examples",
+      "files": {
+        "docs/slugs.md": "# Slugs\n\nLower case, dashes between words.\n"
+      }
+    }
+  ]
+}

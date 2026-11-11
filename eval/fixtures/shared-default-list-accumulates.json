@@ -1,0 +1,26 @@
+{
+  "id": "shared-default-list-accumulates",
+  "symptom": "tests/test_tags.py::test_calls_do_not_share_a_list fails:\nAssertionError: assert ['a', 'b'] == ['b']",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: append a tag to a list",
+      "files": {
+        "src/tags.py": "def add_tag(tag, tags=None):\n    if tags is None:\n        tags = []\n    tags.append(tag)\n    return tags\n",
+        "tests/test_tags.py": "from src.tags import add_tag\n\n\ndef test_calls_do_not_share_a_list():\n    assert add_tag(\"a\") == [\"a\"]\n    assert add_tag(\"b\") == [\"b\"]\n"
+      }
+    },
+    {
+      "message": "refactor: default the tags argument to a list",
+      "files": {
+        "src/tags.py": "def add_tag(tag, tags=[]):\n    tags.append(tag)\n    return tags\n"
+      }
+    },
+    {
+      "message": "docs: describe tagging",
+      "files": {
+        "docs/tags.md": "# Tags\n\nA tag is a short string.\n"
+      }
+    }
+  ]
+}

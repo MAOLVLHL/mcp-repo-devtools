@@ -1,0 +1,27 @@
+{
+  "id": "header-lookup-lowercased-twice",
+  "symptom": "test/headers.test.js: a lower-case name does not find a title-case header:\nAssertionError: Expected values to be strictly equal: undefined !== 'text/plain'",
+  "expected_commit": 2,
+  "commits": [
+    {
+      "message": "feat: read a header case-insensitively",
+      "files": {
+        "package.json": "{\n  \"name\": \"fixture\",\n  \"private\": true,\n  \"type\": \"module\"\n}\n",
+        "src/headers.js": "export function header(headers, name) {\n  const wanted = name.toLowerCase();\n  for (const [key, value] of Object.entries(headers)) {\n    if (key.toLowerCase() === wanted) {\n      return value;\n    }\n  }\n  return undefined;\n}\n",
+        "test/headers.test.js": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\n\nimport { header } from \"../src/headers.js\";\n\ntest(\"a lower-case name finds a title-case key\", () => {\n  assert.equal(header({ \"Content-Type\": \"text/plain\" }, \"content-type\"), \"text/plain\");\n});\n"
+      }
+    },
+    {
+      "message": "perf: look the name up directly",
+      "files": {
+        "src/headers.js": "export function header(headers, name) {\n  return headers[name.toLowerCase()];\n}\n"
+      }
+    },
+    {
+      "message": "docs: list the headers we read",
+      "files": {
+        "docs/headers.md": "# Headers\n\nContent-Type, Accept, User-Agent.\n"
+      }
+    }
+  ]
+}

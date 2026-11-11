@@ -1,0 +1,26 @@
+{
+  "id": "frozen-dataclass-loses-hash",
+  "symptom": "tests/test_point.py::test_points_can_be_deduplicated fails:\nTypeError: unhashable type: 'Point'",
+  "expected_commit": 3,
+  "commits": [
+    {
+      "message": "feat: a point value type",
+      "files": {
+        "src/point.py": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Point:\n    x: int\n    y: int\n",
+        "tests/test_point.py": "from src.point import Point\n\n\ndef test_points_can_be_deduplicated():\n    seen = {Point(1, 2), Point(1, 2), Point(3, 4)}\n    assert len(seen) == 2\n"
+      }
+    },
+    {
+      "message": "docs: show the point type in the readme",
+      "files": {
+        "README.md": "# Geometry\n\nPoints are immutable values.\n"
+      }
+    },
+    {
+      "message": "refactor: drop the frozen flag to allow mutation",
+      "files": {
+        "src/point.py": "from dataclasses import dataclass\n\n\n@dataclass\nclass Point:\n    x: int\n    y: int\n"
+      }
+    }
+  ]
+}
