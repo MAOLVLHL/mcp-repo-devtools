@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -185,4 +185,12 @@ test("a write tool without a token fails before touching the network", { skip: !
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
+});
+test("the reported version is the published version", () => {
+  const pkg = JSON.parse(
+    readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  ) as { version: string };
+  const reported = execFileSync(process.execPath, [ENTRY, "--version"], { encoding: "utf8" }).trim();
+  assert.equal(reported, pkg.version);
+  assert.match(reported, /^\d+\.\d+\.\d+/);
 });

@@ -5,6 +5,8 @@
  * 200 lines / 64 KB.
  */
 
+import { readFileSync } from "node:fs";
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -21,7 +23,15 @@ import {
 } from "./github.js";
 import { clip, redact } from "./text.js";
 
-export const VERSION = "0.2.0";
+/**
+ * Read from package.json rather than a literal: a second copy of the version
+ * drifts the first time someone forgets to bump both.
+ */
+const PACKAGE = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+) as { version: string };
+
+export const VERSION: string = PACKAGE.version;
 export const SERVER_NAME = "mcp-repo-devtools";
 
 export interface ServerOptions {
