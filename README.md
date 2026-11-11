@@ -30,9 +30,17 @@ hard boundary, and both are measured rather than asserted.
 
 ## Quickstart
 
+The package is not on npm yet, so the release tarball is the installable artifact today:
+
 ```bash
-npx -y mcp-repo-devtools --help     # prints the env contract and exits
+npm install -g https://github.com/MAOLVLHL/mcp-repo-devtools/releases/download/v0.2.1/mcp-repo-devtools-0.2.1.tgz
+mcp-repo-devtools --version        # 0.2.1
+mcp-repo-devtools --help           # prints the env contract and exits
 ```
+
+Until the publish lands, use the global binary `mcp-repo-devtools` wherever a client
+config below says `npx -y mcp-repo-devtools`. Once it is on npm, `npx` is the
+zero-install path and nothing else changes.
 
 The server speaks MCP over stdio. Two variables matter:
 
