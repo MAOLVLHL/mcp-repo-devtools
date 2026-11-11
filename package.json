@@ -1,7 +1,7 @@
 {
   "name": "mcp-repo-devtools",
   "version": "0.5.0",
-  "description": "Tool surface for coding agents: bounded git and GitHub tools, a reference agent loop, and an eval that publishes where it loses.",
+  "description": "Tool surface for coding agents: bounded git and GitHub tools, a reference agent loop, and a forty-fixture eval that shows where a raw git command wins and where a depth-1 clone leaves it unable to answer.",
   "type": "module",
   "bin": {
     "mcp-repo-devtools": "dist/index.js"
@@ -47,6 +47,8 @@
     "ci",
     "developer-tools",
     "evaluation",
+    "evals",
+    "ci-logs",
     "claude-code",
     "codex",
     "cursor"

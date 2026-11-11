@@ -9,7 +9,7 @@ install the server; this file is for the ones who change it.
 ```bash
 npm install
 npm run build                 # tsc -> dist/ ; the tests import from src, the bin from dist
-npm test                      # build + node:test (154 tests) — run it before every commit
+npm test                      # build + node:test (155 tests) — run it before every commit
 npm run snapshot              # rewrite tests/fixtures/tool-surface.json after a surface change
 npm run eval                  # forty fixtures through the scripted oracle, offline, 40/40
 npm run eval:baseline         # the raw git arm on the thirty git fixtures: 30/30. The ten

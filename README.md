@@ -9,9 +9,11 @@
 
 `mcp-repo-devtools` is the tool surface a coding agent calls before it touches a
 repository — working tree, history, issues, failing CI, pull-request context — plus a
-reference loop that uses those tools and an eval that scores that loop against a model
-holding nothing but `git`. Every result has a hard budget, every query has a hard
-boundary, and both are measured rather than asserted.
+reference loop that uses those tools and a forty-fixture eval that scores that loop against
+a model holding nothing but `git`. The eval publishes both halves of the answer: the raw
+command is **2.1× cheaper** whenever the history survives the clone, and **cannot answer at
+all** when a depth-1 checkout leaves the CI log as the only evidence. Every result has a
+hard budget, every query has a hard boundary, and both are measured rather than asserted.
 
 It is built for the agent end of MCP, not for a human clicking through a UI: six tools
 declared read-only, structured results a host can read as fields, progress and
@@ -369,7 +371,7 @@ model, including what these controls do **not** cover, is in
 ```bash
 npm install
 npm run build        # tsc -> dist/
-npm test             # build + node:test, 150 tests
+npm test             # build + node:test, 155 tests
 npm run snapshot     # rewrite tests/fixtures/tool-surface.json after a surface change
 npm run bench        # the measurement above (needs a checkout, and a token for GitHub rows)
 npm run inspect      # MCP Inspector against the built server
