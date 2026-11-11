@@ -123,6 +123,34 @@ and the running `git` process.
 Full argument tables, example output, the exact truncation notes and what each layer
 carries: [`docs/tools.md`](docs/tools.md).
 
+## Three prompts, two optional client features
+
+A tool list is not a workflow. The server also registers three prompts — `diagnose-ci`,
+`review-pr` and `triage-issues` — that a host can offer as slash commands. Each renders a
+short, ordered plan over the read tools ("call `gh_ci_failures` with include_logs=true,
+then map the log line to a file with `git_log`") and ends by saying what not to do: no
+edits, no comments, no issues. They are prompts, not tools: nothing runs until the model
+calls one.
+
+Two client capabilities change how calls behave, and both are off unless you ask for
+them, so the default surface is unchanged:
+
+- **Confirmation before a write.** If the client advertises `elicitation`, the three write
+  tools ask a human first ("Approve this GitHub write?" with the action, target and title)
+  and send nothing when the answer is no — the refusal comes back as a normal tool error
+  with the reason. `MCP_CONFIRM_WRITES=1` refuses when the client *cannot* ask (fail
+  closed); `MCP_CONFIRM_WRITES=0` never asks. Unset means: ask when possible, proceed
+  when the client has no way to ask.
+- **Summarising instead of clipping.** `MCP_SAMPLING_COMPRESSION=1` lets an over-budget
+  result be summarised by the client's own model instead of cut at 64 KB / 200 lines. The
+  summary keeps identifiers, paths and error strings, is labelled
+  `…compressed from N bytes by the client model`, and falls back to the ordinary clip if
+  the model fails, times out or returns nothing. Results that already fit are byte-identical
+  and never sent to the model.
+
+Redaction runs before either feature, so a summary cannot bring back a secret the clip path
+would have removed.
+
 ## Reference agent
 
 The server is not an agent: it holds no loop, no planning and no memory between calls.
@@ -268,7 +296,7 @@ model, including what these controls do **not** cover, is in
 ```bash
 npm install
 npm run build        # tsc -> dist/
-npm test             # build + node:test, 115 tests
+npm test             # build + node:test, 124 tests
 npm run snapshot     # rewrite tests/fixtures/tool-surface.json after a surface change
 npm run bench        # the measurement above (needs a checkout, and a token for GitHub rows)
 npm run inspect      # MCP Inspector against the built server

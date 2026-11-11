@@ -257,3 +257,72 @@ A failed write returns GitHub's own reason, not a stack trace:
 ```text
 Error: GitHub refused (422): No commits between main and feat/x
 ```
+
+### Confirming a write
+
+If the client advertises `elicitation`, every write asks a human before it goes out:
+
+```text
+Approve this GitHub write?
+
+  Open a pull request
+  acme/widget (feat/flag -> main)
+  Add a flag
+```
+
+The answer is a boolean plus an optional note. `action: "accept"` with `approve: true`
+sends the request; `decline`, `cancel`, a timeout (five minutes) or a dropped connection
+means nothing is sent, and the tool returns `isError: true` with the reason — including
+the human's note, so a model can try a different approach instead of repeating the call.
+
+| `MCP_CONFIRM_WRITES` | Client can ask | Behaviour |
+| --- | --- | --- |
+| unset (default) | yes | asks |
+| unset (default) | no | proceeds — there is nobody to ask |
+| `1` / `true` | no | **refuses**: `not approved (unsupported)` |
+| `0` / `false` | either | never asks |
+
+A refusal is not a crash and not a silent success: no GitHub request is made, no audit
+line is written, and the error says which of the four paths was taken.
+
+## Summarising instead of clipping
+
+With `MCP_SAMPLING_COMPRESSION=1` and a client that advertises `sampling`, a result over
+the 64 KB / 200 line budget is sent to the client's own model for a summary instead of
+being cut:
+
+```text
+…compressed from 302,144 bytes by the client model
+
+diff --git a/pkg/cache.py b/pkg/cache.py
+-    key = hashlib.sha256(value).hexdigest()
++    key = hashlib.sha256(tenant + value).hexdigest()
+…(identifiers, paths and error strings kept; log noise dropped)
+```
+
+The request asks for at most 2000 characters and names what must survive: identifiers,
+paths, numbers, error strings and the order of events. A summary is itself clipped to the
+budget, and the header records how many bytes it replaced.
+
+Failure is not fatal: a timeout (20 s), an error, an empty reply or a client without
+`sampling` all fall back to the ordinary clip, with the usual `…truncated` note. Results
+inside the budget are never sent to the model — the text a tool returns is part of its
+contract, and this feature only changes the text that was going to be cut anyway.
+
+## Prompts
+
+Three MCP prompts turn a tool list into a workflow a host can offer as a command. They are
+plans, not tools: nothing executes until the model calls one, and each ends by naming what
+not to do.
+
+| Prompt | Arguments | Plan |
+| --- | --- | --- |
+| `diagnose-ci` | `repo`, `ref`, `worktree?` | failing check → error line → file → introducing commit; stops before a patch |
+| `review-pr` | `repo`, `number`, `worktree?` | context and diff → findings by severity; never posts the review |
+| `triage-issues` | `repo`, `query?`, `worktree?` | search → check each against the tree → fixed / present / needs-info |
+
+`worktree` is the absolute path a local repository was checked out at; without it the plan
+tells the model to name the files and stop rather than guess. Prompts are advertised by
+`prompts/list` and rendered by `prompts/get`; the server declares the capability itself, so
+no configuration is needed.
+

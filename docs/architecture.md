@@ -70,6 +70,27 @@ flowchart LR
   job, never the whole archive: a full Actions log is megabytes and would blow
   the model's context.
 
+## Client-side capabilities
+
+Three MCP features are used as seams rather than dependencies, and every one of them
+degrades to the behaviour that existed before it:
+
+| Feature | Used for | When the client lacks it |
+| --- | --- | --- |
+| `prompts` | three workflow plans a host can offer as commands | nothing is registered as a tool; tools/list is unchanged |
+| `elicitation` | asking a human to approve a write | the write proceeds (or is refused, if `MCP_CONFIRM_WRITES=1`) |
+| `sampling` | summarising an over-budget result | the result is clipped exactly as before |
+
+The rule behind all three: a capability may improve a call, never widen what the server is
+allowed to do. Elicitation adds a gate; it does not grant one. Sampling replaces a lossy
+clip with a different lossy summary, and the summary passes the same redactor as the
+original.
+
+Confirmation sits in front of the handler, not inside it: the tool checks the outcome of
+`requestWriteApproval` before it calls GitHub, so a declined write performs no request and
+writes no audit line. A refusal is returned as `isError: true` with the human's note, which
+is what lets a model try a different approach instead of retrying blindly.
+
 ## Adding a tool
 
 1. Add the logic to `src/git.ts` or `src/github.ts` as a plain async function
