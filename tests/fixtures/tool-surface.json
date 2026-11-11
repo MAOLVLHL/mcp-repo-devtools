@@ -1,0 +1,71 @@
+[
+  {
+    "name": "gh_ci_failures",
+    "properties": [
+      "include_logs",
+      "log_lines",
+      "ref",
+      "repo"
+    ],
+    "required": [
+      "ref",
+      "repo"
+    ]
+  },
+  {
+    "name": "gh_issue_search",
+    "properties": [
+      "limit",
+      "query",
+      "repo",
+      "state"
+    ],
+    "required": [
+      "repo"
+    ]
+  },
+  {
+    "name": "gh_pr_context",
+    "properties": [
+      "number",
+      "repo"
+    ],
+    "required": [
+      "number",
+      "repo"
+    ]
+  },
+  {
+    "name": "git_diff",
+    "properties": [
+      "base",
+      "context_lines",
+      "mode",
+      "path",
+      "repo"
+    ],
+    "required": [
+      "repo"
+    ]
+  },
+  {
+    "name": "git_log",
+    "properties": [
+      "limit",
+      "path",
+      "repo"
+    ],
+    "required": [
+      "repo"
+    ]
+  },
+  {
+    "name": "git_status",
+    "properties": [
+      "repo"
+    ],
+    "required": [
+      "repo"
+    ]
+  }
+]
