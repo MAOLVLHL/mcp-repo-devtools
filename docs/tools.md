@@ -12,6 +12,30 @@ Common rules:
 - **No caching.** Each call observes the current state of the repository or the API.
 - **Errors** come back with `isError: true` and a message that says what to do next.
 
+## Annotations
+
+Every tool declares what calling it does to the world, so a host can label, group or
+hide tools without reading prose:
+
+| Tools | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
+| --- | --- | --- | --- | --- |
+| `git_status`, `git_log`, `git_diff` | true | false | true | false |
+| `gh_issue_search`, `gh_ci_failures`, `gh_pr_context` | true | false | true | true |
+| `gh_pr_create`, `gh_issue_create`, `gh_pr_comment` | false | true | false | true |
+
+`openWorldHint` is false only for the three git tools: they touch nothing but the
+checkout they were pointed at. `idempotentHint` is false for writes because a second
+`gh_pr_create` with the same arguments is a second pull request, not the same one.
+
+These are hints, not permissions. The protocol tells clients not to make security
+decisions from a hint, and neither should you: what actually keeps this server
+read-only is that the three write tools are not registered unless
+`MCP_ENABLE_WRITE=1`.
+
+The server also sends one paragraph of instructions at initialize — start with
+`git_status`, the 64 KB / 200 line budget, and the write-mode flag — because that is
+the part which spans tools, and so cannot live in any single description.
+
 ---
 
 ## `git_status`

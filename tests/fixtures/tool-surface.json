@@ -10,7 +10,13 @@
     "required": [
       "ref",
       "repo"
-    ]
+    ],
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    }
   },
   {
     "name": "gh_issue_search",
@@ -22,7 +28,13 @@
     ],
     "required": [
       "repo"
-    ]
+    ],
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    }
   },
   {
     "name": "gh_pr_context",
@@ -33,7 +45,13 @@
     "required": [
       "number",
       "repo"
-    ]
+    ],
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    }
   },
   {
     "name": "git_diff",
@@ -46,7 +64,13 @@
     ],
     "required": [
       "repo"
-    ]
+    ],
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
   },
   {
     "name": "git_log",
@@ -57,7 +81,13 @@
     ],
     "required": [
       "repo"
-    ]
+    ],
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
   },
   {
     "name": "git_status",
@@ -66,6 +96,12 @@
     ],
     "required": [
       "repo"
-    ]
+    ],
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
   }
 ]
