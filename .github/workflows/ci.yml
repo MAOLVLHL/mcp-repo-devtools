@@ -56,13 +56,30 @@ jobs:
       - run: npm ci
       - run: npm run build
       # Both arms run the scripted oracle, so this proves the harness and every
-      # fixture still work: 36/36 or the fixtures drifted. The raw arm is scored on
+      # fixture still work: 40/40 or the fixtures drifted. The raw arm is scored on
       # the git fixtures because its one tool cannot read a CI log; no miss is
       # excused on either arm. The model is measured separately, by eval-model.yml,
       # because a stochastic run is not a gate.
-      - name: mcp arm, thirty-six fixtures
-        run: npm run eval
+      - name: mcp arm, forty fixtures
+        run: npm run eval | tee eval-mcp.txt
       - name: raw git arm, the thirty git fixtures
-        run: npm run eval:baseline
+        run: npm run eval:baseline | tee eval-baseline.txt
       - name: no fixture regressed against the recorded baseline
-        run: npm run eval:check
+        run: npm run eval:check | tee eval-gate.txt
+      - name: Publish both arms and the gate on the run page
+        if: always()
+        run: |
+          {
+            echo '### Eval, scripted oracle'
+            echo ''
+            echo '| arm | result |'
+            echo '| --- | --- |'
+            echo "| six MCP tools, forty fixtures | $(grep -m1 '^success@1' eval-mcp.txt | sed 's/  ·.*//') |"
+            echo "| one raw git tool, thirty git fixtures | $(grep -m1 '^success@1' eval-baseline.txt | sed 's/  ·.*//') |"
+            echo ''
+            echo '```'
+            grep -m1 -E '^(git fixtures:|fixtures:)' eval-mcp.txt || true
+            grep -m1 -E '^(git fixtures:|fixtures:)' eval-baseline.txt || true
+            grep -m1 -E '^gate:' eval-gate.txt || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
