@@ -38,6 +38,9 @@ export const EVAL_SYSTEM_PROMPT = [
   "explains the failure. A plausible story without a diff behind it is a wrong answer even",
   "when it sounds right. If the history genuinely does not identify a commit, say that",
   "instead of inventing a sha.",
+  "",
+  "Cite the sha exactly as the history printed it, abbreviated or not. Never pad a short sha",
+  "into a longer one: the rest of those characters would be invented.",
 ].join("\n");
 
 export function taskPrompt(fixture: Fixture, build: BuiltRepo, arm: Arm): string {
@@ -60,7 +63,7 @@ export function taskPrompt(fixture: Fixture, build: BuiltRepo, arm: Arm): string
     "sections:",
     "",
     "## Introduced by",
-    "<the full commit sha>",
+    "<the commit sha, exactly as the history printed it>",
     "",
     "## Why",
     "<at most 150 words: what that commit changed and why it breaks this test>",

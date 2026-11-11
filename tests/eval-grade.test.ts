@@ -56,6 +56,16 @@ test("accepts an abbreviated sha", () => {
   assert.equal(score.cited, EXPECTED.slice(0, 7));
 });
 
+test("a short sha padded with invented characters is not a citation", () => {
+  // The eval's own first runs: git_log prints an abbreviated sha, a model copied the
+  // seven good characters and invented thirty-three more. The commit was right and the
+  // answer was still wrong, because the identifier had never existed.
+  const padded = EXPECTED.slice(0, 7) + "0".repeat(33);
+  const score = gradeRun(fixture, EXPECTED, [EXPECTED, OTHER], runWith("## Introduced by\n" + padded));
+  assert.equal(score.success, false);
+  assert.equal(score.cited, padded);
+});
+
 test("a different fixture sha is a wrong citation, not a pass", () => {
   const score = gradeRun(fixture, EXPECTED, [EXPECTED, OTHER], runWith("## Introduced by\n" + OTHER));
   assert.equal(score.success, false);
