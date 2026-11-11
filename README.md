@@ -347,6 +347,10 @@ npm run eval         # the ten fixtures through the oracle, offline
 The tool surface is a contract: `tests/contract.test.ts` fails if a tool appears,
 disappears, or changes its arguments without the snapshot being updated on purpose.
 
+If you are a coding agent working *in* this repository rather than installing it, read
+[`AGENTS.md`](AGENTS.md): the commands, the six rules a change must not break, and where
+each layer lives.
+
 ```text
 src/config.ts   MCP_ALLOWED_ROOTS parsing and realpath containment
 src/git.ts      execFile wrapper, allowlists, status/log/diff
