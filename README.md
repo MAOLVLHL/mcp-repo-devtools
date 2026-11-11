@@ -355,7 +355,8 @@ model, including what these controls do **not** cover, is in
   at a code directory, not at your home directory.
 - **Not an agent runtime.** The server has no loop, no planning and no memory between
   calls. `src/agent/` is a client of it — read-only, one task, not exposed as a tool — and
-  `eval/` is how that client is judged, against a baseline that currently wins.
+  `eval/` is how that client is judged, against a baseline that wins on cost wherever the
+  git history survives the clone — and loses outright where it does not.
 - **Not a GitHub client.** No push, merge, close, branch creation, or file editing.
   Those belong to the agent's own git client, where the human already watches.
 - **Not an injection filter.** Commit messages, issue bodies and log lines are returned
