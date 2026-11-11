@@ -23,13 +23,19 @@ await client.connect(clientTransport);
 const { tools } = await client.listTools();
 await client.close();
 
+const ANNOTATION_FIELDS = ["destructiveHint", "idempotentHint", "openWorldHint", "readOnlyHint"];
+
 const shape = tools
   .map((tool) => {
     const schema = (tool.inputSchema ?? {});
+    const annotations = tool.annotations ?? {};
     return {
       name: tool.name,
       properties: Object.keys(schema.properties ?? {}).sort(),
       required: [...(schema.required ?? [])].sort(),
+      annotations: Object.fromEntries(
+        ANNOTATION_FIELDS.map((field) => [field, annotations[field] ?? null]),
+      ),
     };
   })
   .sort((left, right) => left.name.localeCompare(right.name));

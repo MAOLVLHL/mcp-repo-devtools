@@ -22,6 +22,7 @@ import {
   searchIssues,
 } from "./github.js";
 import { clip, redact } from "./text.js";
+import { LOCAL_READ, REMOTE_READ, REMOTE_WRITE, SERVER_INSTRUCTIONS } from "./tool-metadata.js";
 
 /**
  * Read from package.json rather than a literal: a second copy of the version
@@ -181,7 +182,10 @@ export function createServer(options: ServerOptions = {}): McpServer {
   const token = options.token === undefined ? resolveToken() : options.token;
   const writeEnabled = options.enableWrite ?? parseEnableWrite(process.env["MCP_ENABLE_WRITE"]);
 
-  const server = new McpServer({ name: SERVER_NAME, version: VERSION });
+  const server = new McpServer(
+    { name: SERVER_NAME, version: VERSION },
+    { instructions: SERVER_INSTRUCTIONS },
+  );
 
   const resolveRepo = (repo: string): string => assertAllowedRepo(repo, roots);
 
@@ -189,6 +193,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
     "git_status",
     {
       title: "git status",
+      annotations: LOCAL_READ,
       description:
         "Summarise a repository's working tree: current branch, upstream, ahead/behind counts and changed paths. " +
         "Read-only. Use this before deciding what to look at with git_diff.",
@@ -204,6 +209,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
     "git_log",
     {
       title: "git log",
+      annotations: LOCAL_READ,
       description:
         "List the newest commits (hash, date, author, subject), newest first. Read-only. " +
         "Use path= to scope to a file or directory, limit= to cap the number of commits (max 100).",
@@ -224,6 +230,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
     "git_diff",
     {
       title: "git diff",
+      annotations: LOCAL_READ,
       description:
         "Diff the working tree against a base revision (default HEAD). Read-only. " +
         "mode='stat' (default) returns file names with line counts; mode='patch' returns the unified diff. " +
@@ -248,6 +255,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
     "gh_issue_search",
     {
       title: "search GitHub issues",
+      annotations: REMOTE_READ,
       description:
         "Search issues in one repository with GitHub's search API, newest activity first. " +
         "Read-only. Returns issue number, title, labels, updated date, url and a body excerpt. " +
@@ -269,6 +277,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
     "gh_ci_failures",
     {
       title: "GitHub CI failures",
+      annotations: REMOTE_READ,
       description:
         "List failing check runs for a commit or branch/PR head, with the failed step names when GitHub exposes them. " +
         "Read-only. Set include_logs=true to also get the tail of the failing job's log, which is usually where the " +
@@ -302,6 +311,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
     "gh_pr_context",
     {
       title: "GitHub pull request context",
+      annotations: REMOTE_READ,
       description:
         "Fetch everything needed to review a pull request in one call: title, body excerpt, base/head, size, " +
         "changed files, review states and review comments. Read-only.",
@@ -319,6 +329,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
       "gh_pr_create",
       {
         title: "open a pull request",
+      annotations: REMOTE_WRITE,
         description:
           "Open a pull request from an already-pushed branch. WRITE: mutates GitHub, so it is only registered when " +
           "MCP_ENABLE_WRITE=1. Requires GITHUB_TOKEN with repo scope. Returns the PR number and url.",
@@ -347,6 +358,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
       "gh_issue_create",
       {
         title: "file an issue",
+      annotations: REMOTE_WRITE,
         description:
           "File an issue. WRITE: mutates GitHub, so it is only registered when MCP_ENABLE_WRITE=1. " +
           "Requires GITHUB_TOKEN with repo scope. Returns the issue number and url.",
@@ -369,6 +381,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
       "gh_pr_comment",
       {
         title: "comment on a pull request or issue",
+      annotations: REMOTE_WRITE,
         description:
           "Post a comment on an issue or pull request. WRITE: mutates GitHub, so it is only registered when " +
           "MCP_ENABLE_WRITE=1. Requires GITHUB_TOKEN with repo scope.",

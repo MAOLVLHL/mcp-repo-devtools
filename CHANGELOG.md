@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- All nine tools carry MCP annotations (`readOnlyHint`, `destructiveHint`,
+  `idempotentHint`, `openWorldHint`), and the server sends usage instructions at
+  initialize, so a host can label or group tools without reading prose.
+- `tests/contract.test.ts` now pins the four hints per tool, and
+  `scripts/contract-snapshot.mjs` records them in the checked-in surface fixture.
+
+### Changed
+
+- Nothing about calling a tool changed: names, argument schemas, defaults and the
+  rendered text are identical to 0.2.1. The surface only grows.
+
 ## 0.2.1 - 2026-11-11
 
 ### Added
