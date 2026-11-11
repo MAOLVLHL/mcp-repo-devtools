@@ -7,10 +7,17 @@
 
 **An agent that can read a whole log file will read a whole log file.**
 
-`mcp-repo-devtools` is an MCP server for the four things an agent looks up *before* it
-touches a repository — working tree, history, issues, CI failures — plus pull-request
-context and three opt-in write tools. Every result has a hard budget, every query has a
-hard boundary, and both are measured rather than asserted.
+`mcp-repo-devtools` is the tool surface a coding agent calls before it touches a
+repository — working tree, history, issues, failing CI, pull-request context — plus a
+reference loop that uses those tools and an eval that scores that loop against a model
+holding nothing but `git`. Every result has a hard budget, every query has a hard
+boundary, and both are measured rather than asserted.
+
+It is built for the agent end of MCP, not for a human clicking through a UI: six tools
+declared read-only, structured results a host can read as fields, progress and
+cancellation for calls that take twenty seconds, a human gate in front of a write, and a
+byte budget on every answer. Works with **Claude Code**, **Cursor**, **Codex**,
+**Copilot** and any other MCP host.
 
 - **Bounded, and measured.** On a real failed CI run, reading the logs it needed cost
   **322,887 bytes raw; the tool returned 13,915** (95.7% less). Issue search over a
@@ -28,13 +35,30 @@ hard boundary, and both are measured rather than asserted.
   (`Error: GitHub rate limit exhausted; resets at … Set GITHUB_TOKEN …`), and truncation
   is never silent — the last line names the argument that narrows the next call.
 
+## Built for an agent
+
+The protocol is the product here: every feature below exists because a model, not a
+person, is on the other end of the call.
+
+| What the agent needs | What the server gives it |
+| --- | --- |
+| choose a tool without reading prose | `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` on all nine tools, plus one paragraph of usage instructions at `initialize` |
+| read fields, not lines | `outputSchema` and `structuredContent` on the six read tools; the text stays for hosts that only render text |
+| not look dead during a 20 s call | one `notifications/progress` per GitHub hop when the client sends a `progressToken`; the last event equals the total |
+| stop work it no longer needs | the caller's abort signal reaches `fetch` and `execFile`; a cancel is reported as `cancelled by the client`, not as a timeout |
+| keep its context small | 64 KB / 200 lines per result, and a tail line that names the argument narrowing the next call |
+| trade a lossy clip for a summary | `MCP_SAMPLING_COMPRESSION=1` lets the client's own model summarise an over-budget result, with the clip as the fallback |
+| act only when a human says so | `elicitation` puts a person in front of all three writes; `MCP_CONFIRM_WRITES=1` fails closed when the client cannot ask |
+| know the order to call things in | three prompts (`diagnose-ci`, `review-pr`, `triage-issues`) that render a plan, not a tool |
+| prove the tool helped | `src/agent/` is a loop over the same tools, and `eval/` scores it against raw `git` — publishing the result even when it loses |
+
 ## Quickstart
 
 The package is not on npm yet, so the release tarball is the installable artifact today:
 
 ```bash
-npm install -g https://github.com/MAOLVLHL/mcp-repo-devtools/releases/download/v0.2.1/mcp-repo-devtools-0.2.1.tgz
-mcp-repo-devtools --version        # 0.2.1
+npm install -g https://github.com/MAOLVLHL/mcp-repo-devtools/releases/download/v0.3.0/mcp-repo-devtools-0.3.0.tgz
+mcp-repo-devtools --version        # 0.3.0
 mcp-repo-devtools --help           # prints the env contract and exits
 ```
 
@@ -42,7 +66,7 @@ Until the publish lands, use the global binary `mcp-repo-devtools` wherever a cl
 config below says `npx -y mcp-repo-devtools`. Once it is on npm, `npx` is the
 zero-install path and nothing else changes.
 
-The server speaks MCP over stdio. Two variables matter:
+The server speaks MCP over stdio. Three variables matter:
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
@@ -122,6 +146,22 @@ and the running `git` process.
 
 Full argument tables, example output, the exact truncation notes and what each layer
 carries: [`docs/tools.md`](docs/tools.md).
+
+## If you are the agent reading this
+
+Five rules that keep a call cheap, learned from the eval rather than guessed:
+
+1. `git_status` first. It names the branch and the changed paths, which is how you
+   choose between `git_diff` and `git_log` instead of calling both.
+2. When a result says `truncated`, narrow it. The tail line names the argument — pass
+   `path=`, `base=` or a smaller `log_lines`. Re-running the same call wider spends the
+   same budget again.
+3. `gh_ci_failures` without `include_logs` is one round trip. Ask for the log only after
+   the failing job is known, and ask for 40 lines, not the archive.
+4. `gh_pr_context` replaces four REST calls. If you are about to fetch a PR, then its
+   files, then its reviews separately, call this instead.
+5. A write returns `isError: true` when a human declined it. Read the note and change the
+   plan; do not send the same call again.
 
 ## Three prompts, two optional client features
 
@@ -281,9 +321,9 @@ model, including what these controls do **not** cover, is in
 
 - **Not a sandbox.** It reads the roots you configure, with your permissions. Point it
   at a code directory, not at your home directory.
-- **Not an agent.** The server has no loop, no planning and no memory between calls.
-  The reference loop in `src/agent/` is a client of it: read-only, one task, not exposed
-  as a tool.
+- **Not an agent runtime.** The server has no loop, no planning and no memory between
+  calls. `src/agent/` is a client of it — read-only, one task, not exposed as a tool — and
+  `eval/` is how that client is judged, against a baseline that currently wins.
 - **Not a GitHub client.** No push, merge, close, branch creation, or file editing.
   Those belong to the agent's own git client, where the human already watches.
 - **Not an injection filter.** Commit messages, issue bodies and log lines are returned
