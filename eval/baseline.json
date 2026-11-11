@@ -1,0 +1,43 @@
+{
+  "model": "deepseek-official/deepseek-flash",
+  "recorded_at": "2026-11-11",
+  "arm": "mcp",
+  "runs": 3,
+  "fixtures": {
+    "async-cache-races-on-miss": "pass",
+    "cache-key-drops-the-tenant": "pass",
+    "clamp-arguments-swapped": "pass",
+    "config-read-at-import-time": "pass",
+    "csv-export-quotes-nothing": "pass",
+    "cursor-skips-the-boundary-row": "pass",
+    "dedupe-keeps-first-not-last": "pass",
+    "deep-merge-became-shallow": "pass",
+    "email-pattern-loses-its-anchor": "pass",
+    "flag-parser-rejects-one": "pass",
+    "float-cents-truncated": "pass",
+    "float-equality-breaks-total": "pass",
+    "frozen-dataclass-loses-hash": "pass",
+    "header-lookup-lowercased-twice": "pass",
+    "json-fixture-loses-unicode": "pass",
+    "page-slice-off-by-one": "pass",
+    "pagination-repeats-first-page": "pass",
+    "parse-int-accepts-trailing-junk": "pass",
+    "query-loses-the-tenant-filter": "pass",
+    "rate-limit-window-is-closed": "pass",
+    "refresh-token-keyerror": "pass",
+    "report-dates-drift-by-timezone": "pass",
+    "retry-loop-no-longer-backs-off": "pass",
+    "shared-default-list-accumulates": "pass",
+    "slug-regex-consumes-underscore": "pass",
+    "sort-mutates-the-callers-array": "pass",
+    "sort-order-depends-on-locale": "pass",
+    "split-drops-the-remainder-cent": "pass",
+    "timeout-unit-swapped": "pass",
+    "unicode-nfc-compare-dropped": "pass"
+  },
+  "summary": {
+    "cases": 30,
+    "passed": 30,
+    "successRate": 1
+  }
+}

@@ -1,0 +1,71 @@
+name: Model eval
+
+# A recorded baseline turns a stochastic run into a gate: the model may be noisy,
+# but a fixture it solved when eval/baseline.json was recorded may not stop being
+# solved without a person raising --max-regressions on purpose.
+#
+# Requires repository secret OPENAI_API_KEY plus variables OPENAI_BASE_URL and
+# OPENAI_MODEL (Settings -> Secrets and variables -> Actions).
+on:
+  workflow_dispatch:
+    inputs:
+      arm:
+        description: Which arm to measure
+        type: choice
+        options: [mcp, baseline]
+        default: mcp
+      baseline:
+        description: Baseline file to compare against
+        default: eval/baseline.json
+      max-regressions:
+        description: Regressions to tolerate (raising this is an admission, not a fix)
+        default: "0"
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: The provider must be configured before a run starts
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+        run: |
+          missing=""
+          if [ -z "$OPENAI_API_KEY" ]; then missing="$missing secret OPENAI_API_KEY"; fi
+          if [ -z "$OPENAI_BASE_URL" ]; then missing="$missing variable OPENAI_BASE_URL"; fi
+          if [ -z "$OPENAI_MODEL" ]; then missing="$missing variable OPENAI_MODEL"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::model eval needs:$missing (Settings -> Secrets and variables -> Actions)"
+            exit 1
+          fi
+      - run: npm run build
+      - name: Measure and gate
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+        run: |
+          node dist/eval/cli.js \
+            --arm "${{ inputs.arm }}" \
+            --provider openai \
+            --check "${{ inputs.baseline }}" \
+            --max-regressions "${{ inputs.max-regressions }}" \
+            --json > eval-run.json
+      - name: Keep the run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-run-${{ inputs.arm }}
+          path: eval-run.json
+          if-no-files-found: warn
