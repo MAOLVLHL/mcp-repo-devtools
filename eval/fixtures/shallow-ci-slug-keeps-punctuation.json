@@ -1,0 +1,70 @@
+{
+  "id": "shallow-ci-slug-keeps-punctuation",
+  "kind": "github",
+  "shallow": true,
+  "symptom": "test/slug.test.js: punctuation becomes one dash fails:\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n+ actual - expected\n\n+ 'Hello,-World!'\n- 'hello-world'",
+  "expected_commit": 3,
+  "commits": [
+    {
+      "message": "feat: turn a title into a url slug",
+      "files": {
+        "package.json": "{\n  \"name\": \"fixture\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+        "src/slug.js": "export function slugify(title) {\n  return title\n    .trim()\n    .toLowerCase()\n    .replace(/[^a-z0-9]+/g, \"-\")\n    .replace(/^-+|-+$/g, \"\");\n}\n",
+        "test/slug.test.js": "import assert from \"node:assert/strict\";\nimport test from \"node:test\";\n\nimport { slugify } from \"../src/slug.js\";\n\ntest(\"punctuation becomes one dash\", () => {\n  assert.equal(slugify(\"Hello, World!\"), \"hello-world\");\n});\n\ntest(\"surrounding dashes are trimmed\", () => {\n  assert.equal(slugify(\"  --Draft--  \"), \"draft\");\n});\n"
+      }
+    },
+    {
+      "message": "chore: add a page that links to the slug helper",
+      "files": {
+        "docs/urls.md": "# URLs\n\nEvery page is addressed by the slug of its title.\n"
+      }
+    },
+    {
+      "message": "refactor: replace runs of whitespace only",
+      "files": {
+        "src/slug.js": "export function slugify(title) {\n  return title.trim().replace(/\\s+/g, \"-\");\n}\n"
+      }
+    },
+    {
+      "message": "docs: add a note about the release checklist",
+      "files": {
+        "docs/releasing.md": "# Releasing\n\n1. Tag the version.\n2. Publish the package.\n3. Announce the change.\n"
+      }
+    }
+  ],
+  "github": {
+    "repo": "acme/site",
+    "ref": "main",
+    "run": 9004,
+    "jobs": [
+      {
+        "id": 7001,
+        "name": "lint",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Run ruff",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "id": 7002,
+        "name": "node (ubuntu-latest, 22)",
+        "conclusion": "failure",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run the tests",
+            "conclusion": "failure"
+          }
+        ]
+      }
+    ],
+    "log": "2026-01-02T00:21:14.0000000Z ##[group]Checking out the repository\n2026-01-02T00:21:14.1000000Z git init -q .\n2026-01-02T00:21:14.2000000Z git remote add origin https://github.com/acme/site\n2026-01-02T00:21:14.3000000Z git fetch --depth 1 origin {{sha}}\n2026-01-02T00:21:14.4000000Z git checkout --detach {{sha}}\n2026-01-02T00:21:14.5000000Z HEAD is now at {{sha7}} docs: add a note about the release checklist\n2026-01-02T00:21:14.6000000Z ##[endgroup]\n2026-01-02T00:21:19.7000000Z ##[group]Run node --test\n2026-01-02T00:21:19.7001000Z node --test\n2026-01-02T00:21:20.8000000Z not ok 1 - punctuation becomes one dash\n2026-01-02T00:21:20.8001000Z   ---\n2026-01-02T00:21:20.8002000Z   error: 'Expected values to be strictly equal:'\n2026-01-02T00:21:20.8003000Z   + actual - expected\n2026-01-02T00:21:20.8004000Z   + 'Hello,-World!'\n2026-01-02T00:21:20.8005000Z   - 'hello-world'\n2026-01-02T00:21:20.8006000Z   code: 'ERR_ASSERTION'\n2026-01-02T00:21:21.0500000Z ##[group]Where the code under test last changed\n2026-01-02T00:21:21.1000000Z $ git blame -L 2,2 --date=short src/slug.js\n2026-01-02T00:21:21.2000000Z {{culprit7}} (Fixture 2026-01-01 2) return title.trim().replace(/\\s+/g, \"-\");\n2026-01-02T00:21:21.4000000Z $ git show --stat --oneline {{culprit7}}\n2026-01-02T00:21:21.5000000Z {{culprit7}} refactor: replace runs of whitespace only\n2026-01-02T00:21:21.6000000Z  src/slug.js | 1 +\n2026-01-02T00:21:21.7000000Z  1 file changed, 1 insertion(+)\n2026-01-02T00:21:21.8000000Z ##[endgroup]\n2026-01-02T00:21:21.4000000Z ##[error]Process completed with exit code 1.",
+    "sha": "culprit"
+  }
+}

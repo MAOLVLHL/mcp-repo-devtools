@@ -1,0 +1,69 @@
+{
+  "id": "shallow-ci-rounds-each-line-first",
+  "kind": "github",
+  "shallow": true,
+  "symptom": "tests/test_invoice.py::test_pennies_are_rounded_once_at_the_end fails:\nAssertionError: assert 2.0 == 2.01",
+  "expected_commit": 3,
+  "commits": [
+    {
+      "message": "feat: total an invoice in one rounding step",
+      "files": {
+        "src/invoice.py": "def total(prices):\n    \"\"\"The invoice total, rounded once at the end.\"\"\"\n    return round(sum(prices), 2)\n",
+        "tests/test_invoice.py": "from src.invoice import total\n\n\ndef test_pennies_are_rounded_once_at_the_end():\n    assert total([1.004, 1.004]) == 2.01\n\n\ndef test_a_whole_number_is_unchanged():\n    assert total([2.0, 3.0]) == 5.0\n"
+      }
+    },
+    {
+      "message": "chore: add a note about the rounding rule",
+      "files": {
+        "docs/billing.md": "# Billing\n\nRound once, on the total. Rounding each line first loses money on long invoices.\n"
+      }
+    },
+    {
+      "message": "refactor: round each line as it is added",
+      "files": {
+        "src/invoice.py": "def total(prices):\n    \"\"\"The invoice total, rounded once at the end.\"\"\"\n    return round(sum(round(price, 2) for price in prices), 2)\n"
+      }
+    },
+    {
+      "message": "docs: add a note about the release checklist",
+      "files": {
+        "docs/releasing.md": "# Releasing\n\n1. Tag the version.\n2. Publish the package.\n3. Announce the change.\n"
+      }
+    }
+  ],
+  "github": {
+    "repo": "acme/billing",
+    "ref": "main",
+    "run": 9002,
+    "jobs": [
+      {
+        "id": 7001,
+        "name": "lint",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Run ruff",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "id": 7002,
+        "name": "pytest (ubuntu-latest, 3.12)",
+        "conclusion": "failure",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run the tests",
+            "conclusion": "failure"
+          }
+        ]
+      }
+    ],
+    "log": "2026-01-02T00:09:35.0000000Z ##[group]Checking out the repository\n2026-01-02T00:09:35.1000000Z git init -q .\n2026-01-02T00:09:35.2000000Z git remote add origin https://github.com/acme/billing\n2026-01-02T00:09:35.3000000Z git fetch --depth 1 origin {{sha}}\n2026-01-02T00:09:35.4000000Z git checkout --detach {{sha}}\n2026-01-02T00:09:35.5000000Z HEAD is now at {{sha7}} docs: add a note about the release checklist\n2026-01-02T00:09:35.6000000Z ##[endgroup]\n2026-01-02T00:09:41.1000000Z ##[group]Run python -m pytest -q\n2026-01-02T00:09:41.1001000Z python -m pytest -q\n2026-01-02T00:09:42.2000000Z .F\n2026-01-02T00:09:42.2001000Z =================================== FAILURES ===================================\n2026-01-02T00:09:42.2002000Z ______________ test_pennies_are_rounded_once_at_the_end ______________\n2026-01-02T00:09:42.2003000Z     def test_pennies_are_rounded_once_at_the_end():\n2026-01-02T00:09:42.2004000Z >       assert total([1.004, 1.004]) == 2.01\n2026-01-02T00:09:42.2005000Z E       AssertionError: assert 2.0 == 2.01\n2026-01-02T00:09:42.2006000Z\n2026-01-02T00:09:42.2007000Z tests/test_invoice.py:5: AssertionError\n2026-01-02T00:21:21.0500000Z ##[group]Where the code under test last changed\n2026-01-02T00:21:21.1000000Z $ git blame -L 3,3 --date=short src/invoice.py\n2026-01-02T00:21:21.2000000Z {{culprit7}} (Fixture 2026-01-01 3) return round(sum(round(price, 2) for price in prices), 2)\n2026-01-02T00:21:21.4000000Z $ git show --stat --oneline {{culprit7}}\n2026-01-02T00:21:21.5000000Z {{culprit7}} refactor: round each line as it is added\n2026-01-02T00:21:21.6000000Z  src/invoice.py | 1 +\n2026-01-02T00:21:21.7000000Z  1 file changed, 1 insertion(+)\n2026-01-02T00:21:21.8000000Z ##[endgroup]\n2026-01-02T00:21:21.4000000Z ##[error]Process completed with exit code 1.",
+    "sha": "culprit"
+  }
+}

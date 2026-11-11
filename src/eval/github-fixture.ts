@@ -13,6 +13,9 @@ const LOG_HOST = "https://logs.invalid/";
 const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SHA_PATTERN = /^[0-9a-f]{7,40}$/;
 
+/** Sentinel: resolve to the sha of the fixture's culprit commit when the repo is baked. */
+export const CULPRIT_SHA = "culprit";
+
 export interface GithubJobStep {
   name: string;
   conclusion: string;
@@ -35,8 +38,17 @@ export interface GithubScenario {
   jobs: GithubJob[];
   /** The failing job's log, as GitHub would serve it: runner lines, traceback included. */
   log: string;
-  /** Head sha reported by the check-runs endpoint. */
+  /**
+   * Head sha reported by the check-runs endpoint, or the literal "culprit", which the
+   * builder resolves to the sha of the commit the fixture blames.
+   */
   sha: string;
+  /**
+   * Set by the builder on a shallow fixture: the sha of the commit that introduced the
+   * regression, which the depth-1 clone no longer holds. Nothing reads it but the log,
+   * where `{{culprit}}` is the one place that commit is still named.
+   */
+  culprit_sha?: string;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -107,8 +119,8 @@ export function parseGithubScenario(value: unknown, source: string): GithubScena
   if (typeof log !== "string" || log.trim().length === 0) {
     throw new Error(source + ": github.log must be the failing job's log");
   }
-  if (typeof sha !== "string" || !SHA_PATTERN.test(sha)) {
-    throw new Error(source + ": github.sha must be a commit sha (7-40 lowercase hex characters)");
+  if (typeof sha !== "string" || (sha !== CULPRIT_SHA && !SHA_PATTERN.test(sha))) {
+    throw new Error(source + ': github.sha must be a commit sha (7-40 lowercase hex characters) or "culprit"');
   }
   return {
     repo,
@@ -179,7 +191,7 @@ export function installGithubStub(scenario: GithubScenario): GithubStub {
     }
     const download = /^https:\/\/logs\.invalid\/(\d+)\.log$/.exec(url);
     if (download) {
-      const body = String(download[1]) === String(failingJob) ? scenario.log : "";
+      const body = String(download[1]) === String(failingJob) ? renderLog(scenario) : "";
       return new Response(body, { status: 200, headers: { "content-type": "text/plain" } });
     }
     return new Response("the fixture has no route for " + url, { status: 404 });
@@ -197,6 +209,20 @@ export function installGithubStub(scenario: GithubScenario): GithubStub {
       globalThis.fetch = original;
     },
   };
+}
+
+/**
+ * A log is stored as text, but the sha a run tested is only known once the repository is
+ * baked. Two placeholders keep that out of the fixture: `{{sha}}` is the resolved head sha
+ * and `{{sha7}}` its first seven characters, which is how a runner prints it.
+ */
+export function renderLog(scenario: GithubScenario): string {
+  const culprit = scenario.culprit_sha ?? "";
+  return scenario.log
+    .replaceAll("{{sha7}}", scenario.sha.slice(0, 7))
+    .replaceAll("{{sha}}", scenario.sha)
+    .replaceAll("{{culprit7}}", culprit.slice(0, 7))
+    .replaceAll("{{culprit}}", culprit);
 }
 
 /** The marker a graded report is expected to have read out of the log. */

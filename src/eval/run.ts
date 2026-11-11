@@ -50,7 +50,7 @@ export function taskPrompt(fixture: Fixture, build: BuiltRepo, arm: Arm): string
     .split("\n")
     .map((line) => "  " + line)
     .join("\n");
-  const github = fixture.github;
+  const github = build.github ?? fixture.github;
   if (github !== undefined) {
     const tools =
       arm === "mcp"
@@ -59,12 +59,20 @@ export function taskPrompt(fixture: Fixture, build: BuiltRepo, arm: Arm): string
             "git_log and git_diff read the checkout at " + build.repo + ".",
           ].join("\n")
         : "The only tool is git, and it can read this checkout but not GitHub. No workflow log is on disk.";
+    const history = build.shallow
+      ? [
+          "The checkout is at " + build.repo + ", a depth-1 clone of the commit the workflow",
+          "tested: one commit, no parent, no earlier history on disk. The change that broke the",
+          "test is older than that commit and its history was never fetched, so the job log is",
+          "the only place it is still named.",
+        ].join("\n")
+      : "The checkout is at " + build.repo + ".";
     return [
       "CI is failing on " + github.repo + " at " + github.ref + ".",
       "",
       symptom,
       "",
-      "The checkout is at " + build.repo + ".",
+      history,
       "The workflow run is " + String(github.run) + "; the failing job's log is on GitHub.",
       tools,
       "",
@@ -114,7 +122,7 @@ export async function runCase(fixture: Fixture, root: string, options: CaseOptio
   const task = taskPrompt(fixture, build, options.arm);
   // The stub is installed for both arms: the raw arm has no GitHub tool, so it never
   // reaches the network, and the score shows exactly that.
-  const stub = fixture.github === undefined ? null : installGithubStub(fixture.github);
+  const stub = build.github === undefined ? null : installGithubStub(build.github);
 
   let run: AgentRun;
   if (options.arm === "mcp") {

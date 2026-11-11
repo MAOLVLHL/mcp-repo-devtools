@@ -1,0 +1,69 @@
+{
+  "id": "shallow-ci-midnight-rolls-back-a-day",
+  "kind": "github",
+  "shallow": true,
+  "symptom": "tests/test_report.py::test_a_utc_evening_belongs_to_the_next_local_day fails:\nAssertionError: assert datetime.date(2026, 1, 1) == datetime.date(2026, 1, 2)",
+  "expected_commit": 3,
+  "commits": [
+    {
+      "message": "feat: bucket reports by the reporter's calendar day",
+      "files": {
+        "src/report.py": "from datetime import date, datetime, tzinfo\n\n\ndef report_day(moment: datetime, tz: tzinfo) -> date:\n    \"\"\"The calendar day the report belongs to, in the reporter's timezone.\"\"\"\n    return moment.astimezone(tz).date()\n",
+        "tests/test_report.py": "from datetime import date, datetime, timedelta, timezone\n\nfrom src.report import report_day\n\nBERLIN = timezone(timedelta(hours=2))\n\n\ndef test_a_utc_evening_belongs_to_the_next_local_day():\n    moment = datetime(2026, 1, 1, 23, 30, tzinfo=timezone.utc)\n    assert report_day(moment, BERLIN) == date(2026, 1, 2)\n\n\ndef test_a_utc_morning_stays_on_the_same_local_day():\n    moment = datetime(2026, 1, 1, 9, 0, tzinfo=timezone.utc)\n    assert report_day(moment, BERLIN) == date(2026, 1, 1)\n"
+      }
+    },
+    {
+      "message": "docs: explain why the day is computed in the reporter's zone",
+      "files": {
+        "docs/reporting.md": "# Reporting\n\nA report belongs to the day the reporter saw it, not the day UTC saw it.\n"
+      }
+    },
+    {
+      "message": "refactor: simplify the day calculation",
+      "files": {
+        "src/report.py": "from datetime import date, datetime, tzinfo\n\n\ndef report_day(moment: datetime, tz: tzinfo) -> date:\n    \"\"\"The calendar day the report belongs to, in the reporter's timezone.\"\"\"\n    return moment.date()\n"
+      }
+    },
+    {
+      "message": "docs: add a note about the release checklist",
+      "files": {
+        "docs/releasing.md": "# Releasing\n\n1. Tag the version.\n2. Publish the package.\n3. Announce the change.\n"
+      }
+    }
+  ],
+  "github": {
+    "repo": "acme/reports",
+    "ref": "main",
+    "run": 9001,
+    "jobs": [
+      {
+        "id": 7001,
+        "name": "lint",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Run ruff",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "id": 7002,
+        "name": "pytest (ubuntu-latest, 3.12)",
+        "conclusion": "failure",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run the tests",
+            "conclusion": "failure"
+          }
+        ]
+      }
+    ],
+    "log": "2026-01-02T00:04:04.0000000Z ##[group]Checking out the repository\n2026-01-02T00:04:04.1000000Z git init -q .\n2026-01-02T00:04:04.2000000Z git remote add origin https://github.com/acme/reports\n2026-01-02T00:04:04.3000000Z git fetch --depth 1 origin {{sha}}\n2026-01-02T00:04:04.4000000Z git checkout --detach {{sha}}\n2026-01-02T00:04:04.5000000Z HEAD is now at {{sha7}} docs: add a note about the release checklist\n2026-01-02T00:04:04.6000000Z ##[endgroup]\n2026-01-02T00:04:11.2220000Z ##[group]Run python -m pytest -q\n2026-01-02T00:04:11.2221000Z python -m pytest -q\n2026-01-02T00:04:12.0010000Z ..F.\n2026-01-02T00:04:12.0020000Z =================================== FAILURES ===================================\n2026-01-02T00:04:12.0030000Z ______________ test_a_utc_evening_belongs_to_the_next_local_day ______________\n2026-01-02T00:04:12.0040000Z\n2026-01-02T00:04:12.0050000Z     def test_a_utc_evening_belongs_to_the_next_local_day():\n2026-01-02T00:04:12.0060000Z         moment = datetime(2026, 1, 1, 23, 30, tzinfo=timezone.utc)\n2026-01-02T00:04:12.0070000Z >       assert report_day(moment, BERLIN) == date(2026, 1, 2)\n2026-01-02T00:04:12.0080000Z E       AssertionError: assert datetime.date(2026, 1, 1) == datetime.date(2026, 1, 2)\n2026-01-02T00:04:12.0090000Z\n2026-01-02T00:04:12.0100000Z tests/test_report.py:11: AssertionError\n2026-01-02T00:21:21.0500000Z ##[group]Where the code under test last changed\n2026-01-02T00:21:21.1000000Z $ git blame -L 6,6 --date=short src/report.py\n2026-01-02T00:21:21.2000000Z {{culprit7}} (Fixture 2026-01-01 6) return moment.date()\n2026-01-02T00:21:21.4000000Z $ git show --stat --oneline {{culprit7}}\n2026-01-02T00:21:21.5000000Z {{culprit7}} refactor: simplify the day calculation\n2026-01-02T00:21:21.6000000Z  src/report.py | 1 +\n2026-01-02T00:21:21.7000000Z  1 file changed, 1 insertion(+)\n2026-01-02T00:21:21.8000000Z ##[endgroup]\n2026-01-02T00:21:21.4000000Z ##[error]Process completed with exit code 1.",
+    "sha": "culprit"
+  }
+}

@@ -7,7 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { ScriptedProvider } from "../src/agent/provider.js";
-import { loadFixtures, parseFixture } from "../src/eval/fixture.js";
+import { buildRepo, loadFixtures, parseFixture } from "../src/eval/fixture.js";
 import { installGithubStub, logMarker, parseGithubScenario } from "../src/eval/github-fixture.js";
 import { oracleTurns } from "../src/eval/oracle.js";
 import { runCase } from "../src/eval/run.js";
@@ -43,16 +43,119 @@ const SCENARIO = {
   log: "2026-01-02T09:12:31.000Z AssertionError: assert '42' == 'acme:42'\n",
 };
 
-test("six fixtures carry a CI run; the rest stay checkouts", () => {
+test("ten fixtures carry a CI run; the rest stay checkouts", () => {
   const fixtures = loadFixtures(FIXTURES);
   const github = fixtures.filter((fixture) => fixture.kind === "github");
-  assert.equal(github.length, 6);
+  const shallow = github.filter((fixture) => fixture.shallow === true);
+  assert.equal(github.length, 10);
+  assert.equal(shallow.length, 4);
   assert.equal(fixtures.length - github.length, 30);
   for (const fixture of github) {
     assert.ok(fixture.github !== undefined);
     assert.ok(fixture.github.log.length > 0);
     assert.equal(fixture.commits.length >= fixture.expected_commit, true);
   }
+  for (const fixture of shallow) {
+    assert.equal(fixture.github?.sha, "culprit", fixture.id + " should let the builder resolve the run sha");
+  }
+});
+
+test("a shallow fixture keeps one commit, and the culprit is only in the log", { skip: !gitAvailable }, async () => {
+  const fixtures = loadFixtures(FIXTURES);
+  const fixture = fixtures.find((candidate) => candidate.id === "shallow-ci-slug-keeps-punctuation");
+  assert.ok(fixture !== undefined);
+  const root = mkdtempSync(path.join(tmpdir(), "repo-devtools-eval-shallow-"));
+  try {
+    const result = await runCase(fixture, root, {
+      arm: "mcp",
+      providerFor: (build) => new ScriptedProvider(oracleTurns(fixture, build, "mcp")),
+    });
+    assert.equal(result.build.shallow, true);
+    assert.equal(result.build.shas.length, 1);
+    // The run tested the commit the clone keeps; the culprit came before it and did not
+    // survive, so its sha has to be the one the log printed.
+    assert.equal(result.build.shas[0], result.build.github?.sha);
+    assert.notEqual(result.build.shas[0], result.build.expectedSha);
+    assert.equal(result.build.github?.culprit_sha, result.build.expectedSha);
+    assert.equal(result.score.success, true);
+    assert.deepEqual(result.score.toolSequence, ["gh_ci_failures", "git_log"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a shallow checkout has no history for git to read", { skip: !gitAvailable }, async () => {
+  const fixtures = loadFixtures(FIXTURES);
+  const fixture = fixtures.find((candidate) => candidate.id === "shallow-ci-port-parser-accepts-junk");
+  assert.ok(fixture !== undefined);
+  const root = mkdtempSync(path.join(tmpdir(), "repo-devtools-eval-shallow-log-"));
+  try {
+    const result = await runCase(fixture, root, {
+      arm: "baseline",
+      providerFor: (build) => new ScriptedProvider(oracleTurns(fixture, build, "baseline")),
+    });
+    const log = execFileSync("git", ["-C", result.build.repo, "log", "--format=%H"], { encoding: "utf8" });
+    assert.equal(log.trim().split("\n").length, 1);
+    assert.doesNotMatch(log, new RegExp(result.build.expectedSha));
+    assert.equal(result.score.success, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the stubbed log names the sha the run tested", { skip: !gitAvailable }, async () => {
+  const fixtures = loadFixtures(FIXTURES);
+  const fixture = fixtures.find((candidate) => candidate.id === "shallow-ci-rounds-each-line-first");
+  assert.ok(fixture !== undefined);
+  const root = mkdtempSync(path.join(tmpdir(), "repo-devtools-eval-log-"));
+  try {
+    const build = await buildRepo(fixture, root);
+    assert.ok(build.github !== undefined);
+    const stub = installGithubStub(build.github);
+    try {
+      const redirect = await fetch("https://logs.invalid/7002.log", { redirect: "manual" });
+      const body = await redirect.text();
+      // The clone line names the commit the run tested; the blame line names the culprit.
+      assert.match(body, new RegExp("git fetch --depth 1 origin " + String(build.github.sha)));
+      assert.match(body, new RegExp(build.expectedSha.slice(0, 7) + " \\(Fixture "));
+      assert.match(body, new RegExp("git show --stat --oneline " + build.expectedSha.slice(0, 7)));
+      // The run tested a later commit than the one it blames.
+      assert.doesNotMatch(body, new RegExp("HEAD is now at " + build.expectedSha.slice(0, 7)));
+      assert.doesNotMatch(body, /\{\{/);
+    } finally {
+      stub.restore();
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects a shallow git fixture: only a run sha can carry the evidence', () => {
+  const bad = {
+    id: "bad",
+    symptom: "x",
+    expected_commit: 1,
+    shallow: true,
+    commits: [{ message: "one", files: { "a.py": "a = 1\n" } }],
+  };
+  assert.throws(() => parseFixture(bad, "bad.json"), /shallow fixture needs kind: "github"/);
+});
+
+test('the run sha may be the literal "culprit", and nothing else odd', () => {
+  const fixture = {
+    id: "ok",
+    kind: "github",
+    symptom: "x",
+    expected_commit: 1,
+    shallow: true,
+    commits: [{ message: "one", files: { "a.py": "a = 1\n" } }],
+    github: { ...SCENARIO, sha: "culprit" },
+  };
+  assert.equal(parseFixture(fixture, "ok.json").github?.sha, "culprit");
+  assert.throws(
+    () => parseFixture({ ...fixture, github: { ...SCENARIO, sha: "xyz" } }, "bad.json"),
+    /github\.sha must be a commit sha/,
+  );
 });
 
 test("rejects a github fixture without a log", () => {
