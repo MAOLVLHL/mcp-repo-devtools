@@ -4,7 +4,7 @@
 [![npm](https://img.shields.io/npm/v/mcp-repo-devtools?label=npm)](https://www.npmjs.com/package/mcp-repo-devtools)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![node >= 20.11](https://img.shields.io/badge/node-%E2%89%A520.11-informational)
-[![M8ven Verified](https://m8ven.ai/badge/mcp/maolvlhl/mcp-repo-devtools?variant=verified&v=87695646d3dec11ec704de2e1f823724)](https://m8ven.ai/mcp/maolvlhl/mcp-repo-devtools?s=readme)
+[![M8ven Verified](https://m8ven.ai/badge/mcp/maolvlhl/mcp-repo-devtools-1q3cdp?variant=verified&v=87695646d3dec11ec704de2e1f823724)](https://m8ven.ai/mcp/maolvlhl/mcp-repo-devtools-1q3cdp?s=readme)
 
 **An agent that can read a whole log file will read a whole log file.**
 
